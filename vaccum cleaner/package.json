@@ -1,0 +1,31 @@
+{
+  "name": "dustbot-ai-vacuum-cleaner",
+  "version": "2.5.0",
+  "description": "DustBot - Intelligent Autonomous Cleaning Agent. Modern AI Robotics Control Dashboard for College AIML Project Presentation.",
+  "scripts": {
+    "start": "start index.html",
+    "open": "cmd /c start index.html"
+  },
+  "keywords": [
+    "ai",
+    "robotics",
+    "autonomous-agent",
+    "a-star",
+    "dijkstra",
+    "bfs",
+    "dfs",
+    "pathfinding",
+    "vacuum-cleaner",
+    "aiml-project"
+  ],
+  "author": "Jaswanth Teja",
+  "license": "MIT",
+  "dependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "lucide-react": "^0.294.0"
+  },
+  "devDependencies": {
+    "tailwindcss": "^3.3.5"
+  }
+}

@@ -1,0 +1,2759 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DustBot – AI-Powered Autonomous Vacuum Cleaner Dashboard</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%2306b6d4'><circle cx='12' cy='12' r='10'/><path d='M12 6v6l4 2' stroke='%23080c14' stroke-width='2'/></svg>">
+  
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            cyber: {
+              950: '#060911',
+              900: '#0a0f1d',
+              850: '#0e1528',
+              800: '#141e36',
+              700: '#1d2a4a',
+              600: '#2c3e6b',
+              cyan: '#00f2fe',
+              emerald: '#10b981',
+              amber: '#f59e0b',
+              rose: '#f43f5e',
+              purple: '#a855f7'
+            }
+          },
+          fontFamily: {
+            mono: ['"JetBrains Mono"', '"Fira Code"', 'Consolas', 'monospace'],
+            sans: ['"Inter"', 'system-ui', '-apple-system', 'sans-serif'],
+          },
+          animation: {
+            'pulse-fast': 'pulse 0.8s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+            'spin-slow': 'spin 6s linear infinite',
+            'glow': 'glowPulse 2s ease-in-out infinite',
+          },
+          keyframes: {
+            glowPulse: {
+              '0%, 100%': { opacity: 0.9, filter: 'drop-shadow(0 0 6px rgba(0, 242, 254, 0.6))' },
+              '50%': { opacity: 0.5, filter: 'drop-shadow(0 0 2px rgba(0, 242, 254, 0.2))' },
+            }
+          }
+        }
+      }
+    };
+  </script>
+
+  <!-- React 18 and Babel Standalone for live client-side execution -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
+    
+    body {
+      background-color: #060911;
+      color: #e2e8f0;
+      font-family: 'Inter', sans-serif;
+      overflow-x: hidden;
+    }
+    
+    /* Cyber Scrollbars */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #0a0f1d;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #1d2a4a;
+      border-radius: 3px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #00f2fe;
+    }
+
+    .hud-card {
+      background: linear-gradient(135deg, rgba(14, 21, 40, 0.9) 0%, rgba(10, 15, 29, 0.98) 100%);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      position: relative;
+    }
+
+    .hud-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 8px;
+      height: 8px;
+      border-top: 2px solid #00f2fe;
+      border-left: 2px solid #00f2fe;
+      pointer-events: none;
+    }
+
+    .hud-card::after {
+      content: '';
+      position: absolute;
+      bottom: 0;
+      right: 0;
+      width: 8px;
+      height: 8px;
+      border-bottom: 2px solid #00f2fe;
+      border-right: 2px solid #00f2fe;
+      pointer-events: none;
+    }
+
+    .glow-cyan {
+      box-shadow: 0 0 15px rgba(0, 242, 254, 0.35);
+    }
+    .glow-emerald {
+      box-shadow: 0 0 15px rgba(16, 185, 129, 0.35);
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <!-- React Application -->
+  <script type="text/babel">
+    const { useState, useEffect, useRef, useCallback, useMemo } = React;
+
+    // ==========================================
+    // 1. SOUND FX SYNTHESIZER (Web Audio API)
+    // ==========================================
+    class SoundFX {
+      constructor() {
+        this.ctx = null;
+        this.enabled = true;
+      }
+      init() {
+        if (!this.ctx) {
+          const AudioContext = window.AudioContext || window.webkitAudioContext;
+          if (AudioContext) {
+            this.ctx = new AudioContext();
+          }
+        }
+        if (this.ctx && this.ctx.state === 'suspended') {
+          this.ctx.resume();
+        }
+      }
+      playClick() {
+        if (!this.enabled) return;
+        this.init();
+        if (!this.ctx) return;
+        try {
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(800, this.ctx.currentTime);
+          osc.frequency.exponentialRampToValueAtTime(400, this.ctx.currentTime + 0.04);
+          gain.gain.setValueAtTime(0.06, this.ctx.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.04);
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start();
+          osc.stop(this.ctx.currentTime + 0.04);
+        } catch(e) {}
+      }
+      playStep() {
+        if (!this.enabled) return;
+        this.init();
+        if (!this.ctx) return;
+        try {
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(130, this.ctx.currentTime);
+          osc.frequency.exponentialRampToValueAtTime(70, this.ctx.currentTime + 0.04);
+          gain.gain.setValueAtTime(0.03, this.ctx.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.04);
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start();
+          osc.stop(this.ctx.currentTime + 0.04);
+        } catch(e) {}
+      }
+      playClean() {
+        if (!this.enabled) return;
+        this.init();
+        if (!this.ctx) return;
+        try {
+          const now = this.ctx.currentTime;
+          [1046.5, 1318.5, 1567.98].forEach((freq, idx) => {
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(freq, now + idx * 0.04);
+            gain.gain.setValueAtTime(0.05, now + idx * 0.04);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.04 + 0.12);
+            osc.connect(gain);
+            gain.connect(this.ctx.destination);
+            osc.start(now + idx * 0.04);
+            osc.stop(now + idx * 0.04 + 0.13);
+          });
+        } catch(e) {}
+      }
+      playComplete() {
+        if (!this.enabled) return;
+        this.init();
+        if (!this.ctx) return;
+        try {
+          const now = this.ctx.currentTime;
+          [523.25, 659.25, 783.99, 1046.5].forEach((freq, idx) => {
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(freq, now + idx * 0.09);
+            gain.gain.setValueAtTime(0.08, now + idx * 0.09);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.09 + 0.28);
+            osc.connect(gain);
+            gain.connect(this.ctx.destination);
+            osc.start(now + idx * 0.09);
+            osc.stop(now + idx * 0.09 + 0.29);
+          });
+        } catch(e) {}
+      }
+      playAlert() {
+        if (!this.enabled) return;
+        this.init();
+        if (!this.ctx) return;
+        try {
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'sawtooth';
+          osc.frequency.setValueAtTime(280, this.ctx.currentTime);
+          gain.gain.setValueAtTime(0.07, this.ctx.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.14);
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start();
+          osc.stop(this.ctx.currentTime + 0.14);
+        } catch(e) {}
+      }
+    }
+    const sound = new SoundFX();
+
+    // ==========================================
+    // 2. CONSTANTS & SYSTEM CONFIG
+    // ==========================================
+    const GRID_SIZE = 16;
+    const CELL_EMPTY = 0;    // White / Dark Unexplored area
+    const CELL_CLEANED = 1;  // Green Cleaned area
+    const CELL_OBSTACLE = 2; // Grey Blocks
+    const CELL_DUST = 3;     // Orange Dots
+
+    const ALGORITHMS = {
+      ASTAR: {
+        id: 'ASTAR',
+        name: 'A* Search (A-Star)',
+        badge: 'Heuristic + Path Cost',
+        shortDesc: 'Evaluates f(n) = g(n) + h(n) with Manhattan distance heuristic. Optimal, direct, and shortest path guaranteed.',
+        complexity: 'O(b^d)',
+        optimality: 'Guaranteed Shortest',
+        type: 'Informed / Heuristic'
+      },
+      DIJKSTRA: {
+        id: 'DIJKSTRA',
+        name: "Dijkstra's Algorithm",
+        badge: 'Uniform Cost Search',
+        shortDesc: 'Explores radially by lowest cumulative path cost g(n). Equivalent to A* with h(n)=0; optimal minimum-cost path.',
+        complexity: 'O(V + E log V)',
+        optimality: 'Guaranteed Shortest',
+        type: 'Uninformed / Cost'
+      },
+      BFS: {
+        id: 'BFS',
+        name: 'Breadth First Search (BFS)',
+        badge: 'FIFO Wavefront',
+        shortDesc: 'Explores level-by-level in concentric rings using a FIFO queue. Guarantees shortest path in unweighted grids.',
+        complexity: 'O(V + E)',
+        optimality: 'Guaranteed Shortest',
+        type: 'Uninformed'
+      },
+      DFS: {
+        id: 'DFS',
+        name: 'Depth First Search (DFS)',
+        badge: 'LIFO Deep Dive',
+        shortDesc: 'Dives deeply along branches before backtracking using a LIFO stack. Does NOT guarantee shortest path; forms winding trails.',
+        complexity: 'O(V + E)',
+        optimality: 'Not Optimal (Suboptimal Winding)',
+        type: 'Uninformed / Exploratory'
+      }
+    };
+
+    // Preset Maps
+    const PRESET_MAPS = {
+      LIVING_ROOM: {
+        name: 'Living Room Layout',
+        description: 'Sofas, coffee table, entertainment center, with scattered dust clusters',
+        obstacles: [
+          [2, 2], [2, 3], [2, 4], [2, 5], [2, 6], // Sofa
+          [5, 4], [5, 5], [6, 4], [6, 5], // Coffee Table
+          [9, 1], [9, 2], [9, 3], // Media Console
+          [12, 10], [12, 11], [13, 10], [13, 11], [14, 10], [14, 11], // Dining table
+          [4, 11], [4, 12], [5, 11], [5, 12] // Armchair
+        ],
+        dusts: [
+          [1, 1], [1, 7], [3, 4], [4, 7], [7, 2], [8, 6], [7, 12],
+          [10, 8], [11, 4], [13, 3], [14, 8], [14, 14], [10, 13], [2, 14]
+        ],
+        robot: { x: 0, y: 0 }
+      },
+      OFFICE_MAZE: {
+        name: 'Office Cubicle Maze',
+        description: 'Challenging partitioned walls and narrow navigation corridors',
+        obstacles: [
+          [3, 0], [3, 1], [3, 2], [3, 3], [3, 4],
+          [3, 7], [3, 8], [3, 9], [3, 10], [3, 11],
+          [7, 4], [7, 5], [7, 6], [7, 7], [7, 8], [7, 9], [7, 10], [7, 11], [7, 12], [7, 13],
+          [11, 2], [11, 3], [11, 4], [11, 5], [11, 6], [11, 7],
+          [11, 10], [11, 11], [11, 12], [11, 13], [11, 14], [11, 15]
+        ],
+        dusts: [
+          [1, 3], [1, 9], [5, 2], [5, 8], [5, 14], [9, 1], [9, 9], [9, 14], [13, 1], [13, 8], [14, 13]
+        ],
+        robot: { x: 0, y: 0 }
+      },
+      DUST_FIELD: {
+        name: 'Heavy Dust Field',
+        description: 'High dust density testbench across an open room',
+        obstacles: [
+          [4, 4], [4, 11], [11, 4], [11, 11],
+          [7, 7], [7, 8], [8, 7], [8, 8]
+        ],
+        dusts: [
+          [1, 2], [1, 5], [1, 9], [1, 13],
+          [3, 1], [3, 7], [3, 14],
+          [5, 3], [5, 8], [5, 12],
+          [7, 1], [7, 5], [7, 10], [7, 14],
+          [9, 3], [9, 8], [9, 13],
+          [11, 1], [11, 6], [11, 14],
+          [13, 2], [13, 7], [13, 11], [14, 4], [14, 9], [14, 13]
+        ],
+        robot: { x: 0, y: 0 }
+      },
+      ARENA_CLEAR: {
+        name: 'Open Testing Arena',
+        description: 'Clean boundary perimeter, optimal for algorithm benchmark tests',
+        obstacles: [
+          [7, 7], [7, 8], [8, 7], [8, 8]
+        ],
+        dusts: [
+          [2, 2], [2, 13], [13, 2], [13, 13], [7, 3], [7, 12], [3, 7], [12, 7]
+        ],
+        robot: { x: 0, y: 0 }
+      }
+    };
+
+    // ==========================================
+    // 3. AI SEARCH ALGORITHMS
+    // ==========================================
+    const Pathfinder = {
+      // Orthogonal 4 Directions: [dy, dx] (North, East, South, West)
+      DIRECTIONS: [
+        [-1, 0], // North
+        [0, 1],  // East
+        [1, 0],  // South
+        [0, -1]  // West
+      ],
+
+      key: (y, x) => `${y},${x}`,
+
+      isValid: (y, x, grid) => {
+        return (
+          y >= 0 &&
+          y < GRID_SIZE &&
+          x >= 0 &&
+          x < GRID_SIZE &&
+          grid[y][x] !== CELL_OBSTACLE
+        );
+      },
+
+      manhattanDistance: (y1, x1, y2, x2) => {
+        return Math.abs(y1 - y2) + Math.abs(x1 - x2);
+      },
+
+      // 1. A* (A-Star) Search
+      aStar: (start, target, grid) => {
+        const startTime = performance.now();
+        const startKey = Pathfinder.key(start.y, start.x);
+        const targetKey = Pathfinder.key(target.y, target.x);
+
+        if (startKey === targetKey) {
+          return { path: [start], visitedNodes: [], nodesExplored: 0, timeMs: 0.1 };
+        }
+
+        const openSet = [{ ...start, g: 0, h: Pathfinder.manhattanDistance(start.y, start.x, target.y, target.x), f: 0 }];
+        openSet[0].f = openSet[0].g + openSet[0].h;
+
+        const gScore = { [startKey]: 0 };
+        const cameFrom = {};
+        const visitedOrder = [];
+        const inClosedSet = new Set();
+
+        while (openSet.length > 0) {
+          let lowestIdx = 0;
+          for (let i = 1; i < openSet.length; i++) {
+            if (openSet[i].f < openSet[lowestIdx].f || (openSet[i].f === openSet[lowestIdx].f && openSet[i].h < openSet[lowestIdx].h)) {
+              lowestIdx = i;
+            }
+          }
+          const current = openSet.splice(lowestIdx, 1)[0];
+          const currKey = Pathfinder.key(current.y, current.x);
+
+          if (inClosedSet.has(currKey)) continue;
+          inClosedSet.add(currKey);
+          visitedOrder.push({ y: current.y, x: current.x });
+
+          if (current.y === target.y && current.x === target.x) {
+            const path = [];
+            let curr = currKey;
+            while (curr) {
+              const [y, x] = curr.split(',').map(Number);
+              path.unshift({ y, x });
+              curr = cameFrom[curr];
+            }
+            const endTime = performance.now();
+            return {
+              path,
+              visitedNodes: visitedOrder,
+              nodesExplored: visitedOrder.length,
+              timeMs: Math.max(0.1, Number((endTime - startTime).toFixed(2)))
+            };
+          }
+
+          for (const [dy, dx] of Pathfinder.DIRECTIONS) {
+            const ny = current.y + dy;
+            const nx = current.x + dx;
+            const nKey = Pathfinder.key(ny, nx);
+
+            if (!Pathfinder.isValid(ny, nx, grid) || inClosedSet.has(nKey)) continue;
+
+            const tentativeG = gScore[currKey] + 1;
+            if (gScore[nKey] === undefined || tentativeG < gScore[nKey]) {
+              cameFrom[nKey] = currKey;
+              gScore[nKey] = tentativeG;
+              const h = Pathfinder.manhattanDistance(ny, nx, target.y, target.x);
+              const f = tentativeG + h;
+              
+              const existingOpen = openSet.find(n => n.y === ny && n.x === nx);
+              if (existingOpen) {
+                existingOpen.g = tentativeG;
+                existingOpen.f = f;
+              } else {
+                openSet.push({ y: ny, x: nx, g: tentativeG, h, f });
+              }
+            }
+          }
+        }
+
+        const endTime = performance.now();
+        return { path: [], visitedNodes: visitedOrder, nodesExplored: visitedOrder.length, timeMs: Number((endTime - startTime).toFixed(2)) };
+      },
+
+      // 2. Dijkstra's Algorithm (Uniform Cost Search)
+      dijkstra: (start, target, grid) => {
+        const startTime = performance.now();
+        const startKey = Pathfinder.key(start.y, start.x);
+        const targetKey = Pathfinder.key(target.y, target.x);
+
+        if (startKey === targetKey) {
+          return { path: [start], visitedNodes: [], nodesExplored: 0, timeMs: 0.1 };
+        }
+
+        const distances = { [startKey]: 0 };
+        const pq = [{ ...start, dist: 0 }];
+        const cameFrom = {};
+        const visitedOrder = [];
+        const settled = new Set();
+
+        while (pq.length > 0) {
+          pq.sort((a, b) => a.dist - b.dist);
+          const current = pq.shift();
+          const currKey = Pathfinder.key(current.y, current.x);
+
+          if (settled.has(currKey)) continue;
+          settled.add(currKey);
+          visitedOrder.push({ y: current.y, x: current.x });
+
+          if (current.y === target.y && current.x === target.x) {
+            const path = [];
+            let curr = currKey;
+            while (curr) {
+              const [y, x] = curr.split(',').map(Number);
+              path.unshift({ y, x });
+              curr = cameFrom[curr];
+            }
+            const endTime = performance.now();
+            return {
+              path,
+              visitedNodes: visitedOrder,
+              nodesExplored: visitedOrder.length,
+              timeMs: Math.max(0.1, Number((endTime - startTime).toFixed(2)))
+            };
+          }
+
+          for (const [dy, dx] of Pathfinder.DIRECTIONS) {
+            const ny = current.y + dy;
+            const nx = current.x + dx;
+            const nKey = Pathfinder.key(ny, nx);
+
+            if (!Pathfinder.isValid(ny, nx, grid) || settled.has(nKey)) continue;
+
+            const newDist = distances[currKey] + 1;
+            if (distances[nKey] === undefined || newDist < distances[nKey]) {
+              distances[nKey] = newDist;
+              cameFrom[nKey] = currKey;
+              pq.push({ y: ny, x: nx, dist: newDist });
+            }
+          }
+        }
+
+        const endTime = performance.now();
+        return { path: [], visitedNodes: visitedOrder, nodesExplored: visitedOrder.length, timeMs: Number((endTime - startTime).toFixed(2)) };
+      },
+
+      // 3. BFS (Breadth-First Search)
+      bfs: (start, target, grid) => {
+        const startTime = performance.now();
+        const startKey = Pathfinder.key(start.y, start.x);
+        const targetKey = Pathfinder.key(target.y, target.x);
+
+        if (startKey === targetKey) {
+          return { path: [start], visitedNodes: [], nodesExplored: 0, timeMs: 0.1 };
+        }
+
+        const queue = [{ y: start.y, x: start.x }];
+        const cameFrom = {};
+        const visited = new Set([startKey]);
+        const visitedOrder = [];
+
+        while (queue.length > 0) {
+          const current = queue.shift();
+          const currKey = Pathfinder.key(current.y, current.x);
+          visitedOrder.push({ y: current.y, x: current.x });
+
+          if (current.y === target.y && current.x === target.x) {
+            const path = [];
+            let curr = currKey;
+            while (curr) {
+              const [y, x] = curr.split(',').map(Number);
+              path.unshift({ y, x });
+              curr = cameFrom[curr];
+            }
+            const endTime = performance.now();
+            return {
+              path,
+              visitedNodes: visitedOrder,
+              nodesExplored: visitedOrder.length,
+              timeMs: Math.max(0.1, Number((endTime - startTime).toFixed(2)))
+            };
+          }
+
+          for (const [dy, dx] of Pathfinder.DIRECTIONS) {
+            const ny = current.y + dy;
+            const nx = current.x + dx;
+            const nKey = Pathfinder.key(ny, nx);
+
+            if (Pathfinder.isValid(ny, nx, grid) && !visited.has(nKey)) {
+              visited.add(nKey);
+              cameFrom[nKey] = currKey;
+              queue.push({ y: ny, x: nx });
+            }
+          }
+        }
+
+        const endTime = performance.now();
+        return { path: [], visitedNodes: visitedOrder, nodesExplored: visitedOrder.length, timeMs: Number((endTime - startTime).toFixed(2)) };
+      },
+
+      // 4. DFS (Depth-First Search)
+      dfs: (start, target, grid) => {
+        const startTime = performance.now();
+        const startKey = Pathfinder.key(start.y, start.x);
+        const targetKey = Pathfinder.key(target.y, target.x);
+
+        if (startKey === targetKey) {
+          return { path: [start], visitedNodes: [], nodesExplored: 0, timeMs: 0.1 };
+        }
+
+        const stack = [{ y: start.y, x: start.x }];
+        const cameFrom = {};
+        const visited = new Set();
+        const visitedOrder = [];
+
+        while (stack.length > 0) {
+          const current = stack.pop();
+          const currKey = Pathfinder.key(current.y, current.x);
+
+          if (visited.has(currKey)) continue;
+          visited.add(currKey);
+          visitedOrder.push({ y: current.y, x: current.x });
+
+          if (current.y === target.y && current.x === target.x) {
+            const path = [];
+            let curr = currKey;
+            while (curr) {
+              const [y, x] = curr.split(',').map(Number);
+              path.unshift({ y, x });
+              curr = cameFrom[curr];
+            }
+            const endTime = performance.now();
+            return {
+              path,
+              visitedNodes: visitedOrder,
+              nodesExplored: visitedOrder.length,
+              timeMs: Math.max(0.1, Number((endTime - startTime).toFixed(2)))
+            };
+          }
+
+          for (const [dy, dx] of Pathfinder.DIRECTIONS) {
+            const ny = current.y + dy;
+            const nx = current.x + dx;
+            const nKey = Pathfinder.key(ny, nx);
+
+            if (Pathfinder.isValid(ny, nx, grid) && !visited.has(nKey)) {
+              if (!cameFrom[nKey]) {
+                cameFrom[nKey] = currKey;
+              }
+              stack.push({ y: ny, x: nx });
+            }
+          }
+        }
+
+        const endTime = performance.now();
+        return { path: [], visitedNodes: visitedOrder, nodesExplored: visitedOrder.length, timeMs: Number((endTime - startTime).toFixed(2)) };
+      },
+
+      run: (algoId, start, target, grid) => {
+        switch (algoId) {
+          case 'ASTAR': return Pathfinder.aStar(start, target, grid);
+          case 'DIJKSTRA': return Pathfinder.dijkstra(start, target, grid);
+          case 'BFS': return Pathfinder.bfs(start, target, grid);
+          case 'DFS': return Pathfinder.dfs(start, target, grid);
+          default: return Pathfinder.aStar(start, target, grid);
+        }
+      }
+    };
+
+    // ==========================================
+    // 4. HTML5 CANVAS RADAR SCANNER COMPONENT
+    // ==========================================
+    function RadarCanvas({ distances }) {
+      const canvasRef = useRef(null);
+
+      useEffect(() => {
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        let angle = 0;
+        let animationFrameId;
+
+        const render = () => {
+          const width = canvas.width;
+          const height = canvas.height;
+          const cx = width / 2;
+          const cy = height / 2;
+          const radius = width / 2 - 8;
+
+          // Clear canvas with deep dark background
+          ctx.fillStyle = '#080d1a';
+          ctx.fillRect(0, 0, width, height);
+
+          // Draw radar range circles
+          ctx.strokeStyle = 'rgba(0, 242, 254, 0.2)';
+          ctx.lineWidth = 1;
+          [0.25, 0.5, 0.75, 1.0].forEach(factor => {
+            ctx.beginPath();
+            ctx.arc(cx, cy, radius * factor, 0, Math.PI * 2);
+            ctx.stroke();
+          });
+
+          // Draw crosshairs
+          ctx.beginPath();
+          ctx.moveTo(cx - radius, cy);
+          ctx.lineTo(cx + radius, cy);
+          ctx.moveTo(cx, cy - radius);
+          ctx.lineTo(cx, cy + radius);
+          ctx.stroke();
+
+          // Draw rotating sweep beam with phosphorescent gradient
+          ctx.save();
+          ctx.translate(cx, cy);
+          ctx.rotate(angle);
+
+          const sweepGradient = ctx.createLinearGradient(0, 0, radius, 0);
+          sweepGradient.addColorStop(0, 'rgba(0, 242, 254, 0.8)');
+          sweepGradient.addColorStop(1, 'rgba(0, 242, 254, 0.05)');
+
+          ctx.fillStyle = sweepGradient;
+          ctx.beginPath();
+          ctx.moveTo(0, 0);
+          ctx.arc(0, 0, radius, 0, -Math.PI / 4, true);
+          ctx.closePath();
+          ctx.fill();
+
+          ctx.strokeStyle = '#00f2fe';
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.moveTo(0, 0);
+          ctx.lineTo(radius, 0);
+          ctx.stroke();
+          ctx.restore();
+
+          // Draw ultrasonic blips at Front (top), Right (right), Back (bottom), Left (left)
+          // Range scale: max 400cm maps to radius
+          const plotBlip = (dist, dirAngle) => {
+            if (!dist || dist > 380) return;
+            const r = Math.min(radius, (dist / 400) * radius);
+            const bx = cx + r * Math.cos(dirAngle);
+            const by = cy + r * Math.sin(dirAngle);
+
+            ctx.fillStyle = dist < 40 ? '#ef4444' : '#f59e0b';
+            ctx.beginPath();
+            ctx.arc(bx, by, 4, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.strokeStyle = dist < 40 ? 'rgba(239, 68, 68, 0.5)' : 'rgba(245, 158, 11, 0.5)';
+            ctx.beginPath();
+            ctx.arc(bx, by, 7, 0, Math.PI * 2);
+            ctx.stroke();
+          };
+
+          plotBlip(distances.front, -Math.PI / 2); // Front (Up)
+          plotBlip(distances.right, 0);            // Right
+          plotBlip(distances.back, Math.PI / 2);   // Back (Down)
+          plotBlip(distances.left, Math.PI);       // Left
+
+          angle += 0.04;
+          animationFrameId = requestAnimationFrame(render);
+        };
+
+        render();
+
+        return () => {
+          cancelAnimationFrame(animationFrameId);
+        };
+      }, [distances]);
+
+      return (
+        <div className="relative flex flex-col items-center">
+          <canvas
+            ref={canvasRef}
+            width={160}
+            height={160}
+            className="rounded-full border border-cyan-500/40 shadow-[0_0_15px_rgba(0,242,254,0.15)]"
+          />
+          <div className="text-[10px] font-mono text-cyan-400 mt-2 font-bold tracking-wider">
+            360° ULTRASONIC RADAR
+          </div>
+        </div>
+      );
+    }
+
+    // ==========================================
+    // 5. PRESENTATION DECK DATA (8 SPECIFIC SECTIONS)
+    // ==========================================
+    const PRESENTATION_SLIDES = [
+      {
+        id: 1,
+        title: "1. Problem Statement",
+        subtitle: "Inefficiency of Stochastic Vacuum Cleaners",
+        points: [
+          "Conventional household robotic vacuum cleaners use random bounce-and-turn exploration, causing up to 50% redundant cell re-traversal.",
+          "Severe battery depletion with uneven room coverage; edge corners and tight obstacles are frequently abandoned.",
+          "No dynamic sensory path re-planning when new obstacles appear in the operational zone.",
+          "College Project Objective: Build an autonomous, goal-oriented robotics agent integrating sensor fusion, deterministic path planning, and closed-loop verification."
+        ],
+        icon: "alert-triangle",
+        tag: "PROBLEM STATEMENT"
+      },
+      {
+        id: 2,
+        title: "2. Proposed Solution",
+        subtitle: "Intelligent Autonomous Cleaning Agent: DustBot",
+        points: [
+          "End-to-End AI Robotics Architecture combining spatial perception, cognitive target prioritization, and heuristic graph search.",
+          "Continuous Occupancy Grid Mapping (16x16 / 256 cells) categorizing cells into Unexplored, Cleaned, Obstacles, and Dust Targets.",
+          "Real-time Path Optimization: Calculates shortest collision-free paths directly to nearest dust coordinates, eliminating random wandering.",
+          "Telemetry Dashboard: Live monitoring of microcontroller state, ultrasonic obstacle rangefinders, optical dust sensor density, and motor duty cycles."
+        ],
+        icon: "cpu",
+        tag: "PROPOSED SOLUTION"
+      },
+      {
+        id: 3,
+        title: "3. System Architecture",
+        subtitle: "Hardware & Software Integrated Design",
+        points: [
+          "Processing Core: ESP32-WROOM-32 (240MHz Dual-Core Xtensa LX6, FreeRTOS simulation, I2C/SPI sensor bus).",
+          "Perception Subsystem: 4x HC-SR04 Ultrasonic Sonar units (360° distance profiling) + Sharp GP2Y1010AU0F Optical Dust Sensor.",
+          "Actuation Subsystem: Dual DC Geared Wheel Motors via L298N Dual H-Bridge Driver + 12V High-Torque BLDC Suction Turbine.",
+          "Software Engine: React reactive user interface, HTML5 Canvas 60fps radar simulation, heuristic search library, Web Audio feedback."
+        ],
+        icon: "layers",
+        tag: "SYSTEM ARCHITECTURE"
+      },
+      {
+        id: 4,
+        title: "4. Working Principle",
+        subtitle: "The 5-Stage Autonomous Agent Loop",
+        points: [
+          "PERCEIVE: Ultrasonic sonar array measures obstacle clearance in 4 directions; optical dust sensor detects particulate density (µg/m³).",
+          "THINK: Cognitive state machine identifies all uncleaned dust cells, evaluates Manhattan spatial distance, and selects optimal target.",
+          "PLAN: Selected pathfinding algorithm (A*, Dijkstra, BFS, DFS) calculates collision-free waypoint coordinates across the occupancy grid.",
+          "ACT: L298N driver energizes wheel motors to steer robot along the path; engages 18,500 RPM suction turbine upon reaching the target cell.",
+          "VERIFY: Optical dust sensor confirms particulate zero; grid cell transitions to Cleaned (green), and telemetry logs update."
+        ],
+        icon: "refresh-cw",
+        tag: "WORKING PRINCIPLE"
+      },
+      {
+        id: 5,
+        title: "5. AI Search Algorithms",
+        subtitle: "Mathematical Formulation & Comparative Analysis",
+        points: [
+          "A* Search (Default): Evaluates f(n) = g(n) + h(n), where h(n) = |x1-x2| + |y1-y2| (Manhattan distance). Admissible and consistent; guarantees shortest path with minimal explored states.",
+          "Dijkstra's Algorithm: Uniform-cost search exploring radially by minimum cumulative distance g(n). Equivalent to A* with h(n)=0; optimal but evaluates larger frontier.",
+          "Breadth-First Search (BFS): Level-by-level FIFO queue expansion. Guarantees shortest path in unweighted grids, but uniform ring expansion creates node overhead.",
+          "Depth-First Search (DFS): LIFO stack exploration. Dives deeply along single branches; fails to find shortest paths, creating highly winding, inefficient cleaning routes."
+        ],
+        icon: "git-branch",
+        tag: "AI SEARCH ALGORITHMS"
+      },
+      {
+        id: 6,
+        title: "6. Hardware Components",
+        subtitle: "Academic Testbench Specifications (Prototype Simulation)",
+        points: [
+          "Microcontroller: ESP32-WROOM-32 (240MHz, 520KB SRAM, FreeRTOS task scheduling, simulated I2C ADC bus).",
+          "Ultrasonic Range Finder: 4x HC-SR04 (2cm to 400cm range, 15° cone angle, 0.3cm accuracy, 360° obstacle avoidance).",
+          "Dust Optical Sensor: Sharp GP2Y1010AU0F (Infrared emitting diode + phototransistor, analog 0.5V to 3.8V output proportional to dust density).",
+          "Power System: 3-Cell Lithium-Polymer 11.1V 2200mAh battery with simulated Coulomb counting BMS and low-battery auto-docking alert."
+        ],
+        icon: "tool",
+        tag: "HARDWARE COMPONENTS"
+      },
+      {
+        id: 7,
+        title: "7. Software Technologies",
+        subtitle: "Modern Web & AIML Implementation Stack",
+        points: [
+          "React 18 & Hooks: Declarative state management, reactive telemetry streaming, modular component hierarchy.",
+          "Tailwind CSS 3.0: High-tech dark robotics HUD aesthetic, glowing cyber accents, and fully responsive layout.",
+          "HTML5 Canvas & SVG: High-performance 60fps ultrasonic radar sweep, animated robot chassis with lidar cone, and particle suction effects.",
+          "Web Audio API: Real-time procedural audio synthesis for motor hum, suction woosh, sonar pings, and completion fanfares.",
+          "Pure JavaScript Path Engines: Zero external algorithm dependencies; authentic graph data structures and priority queues."
+        ],
+        icon: "code",
+        tag: "SOFTWARE TECHNOLOGIES"
+      },
+      {
+        id: 8,
+        title: "8. Future Enhancements",
+        subtitle: "Roadmap to Commercial & Physical Deployment",
+        points: [
+          "2D RPLIDAR SLAM: Integrate RPLIDAR A1/A2 running Cartographer / Gmapping ROS nodes for real-time laser room mapping.",
+          "Edge Computer Vision: Mount ESP32-CAM or Raspberry Pi running TinyYOLO / MobileNet to classify domestic clutter (cables, pet waste, slippers).",
+          "IoT Cloud Fleet Dashboard: MQTT telemetry streaming to AWS IoT Core / Firebase for mobile app control and historical cleaning heatmaps.",
+          "Auto-Return Docking: Infrared homing beacon and PID alignment controller for automatic battery recharge docking."
+        ],
+        icon: "compass",
+        tag: "FUTURE ENHANCEMENTS"
+      }
+    ];
+
+    // ==========================================
+    // 6. MAIN APPLICATION COMPONENT
+    // ==========================================
+    function App() {
+      // --- NAVIGATION & VIEW ---
+      const [activeTab, setActiveTab] = useState('DASHBOARD'); // DASHBOARD, ALGO_LAB, AI_BRAIN, TELEMETRY, PRESENTATION
+      const [currentPreset, setCurrentPreset] = useState('LIVING_ROOM');
+      const [algorithm, setAlgorithm] = useState('ASTAR');
+      const [simSpeed, setSimSpeed] = useState(2); // 1: Slow, 2: Normal, 4: Fast, 8: Turbo
+      
+      // Grid state: 16x16 2D array
+      const [grid, setGrid] = useState(() => {
+        const initial = Array(GRID_SIZE).fill(null).map(() => Array(GRID_SIZE).fill(CELL_EMPTY));
+        PRESET_MAPS.LIVING_ROOM.obstacles.forEach(([y, x]) => { if (initial[y] && initial[y][x] !== undefined) initial[y][x] = CELL_OBSTACLE; });
+        PRESET_MAPS.LIVING_ROOM.dusts.forEach(([y, x]) => { if (initial[y] && initial[y][x] !== undefined) initial[y][x] = CELL_DUST; });
+        return initial;
+      });
+
+      // Robot State
+      const [robot, setRobot] = useState({ x: 0, y: 0, angle: 90 });
+      const [robotStatus, setRobotStatus] = useState('IDLE'); // IDLE, PERCEIVING, THINKING, PLANNING, MOVING, CLEANING, FINISHED, PAUSED
+      const [isRunning, setIsRunning] = useState(false);
+      
+      // Path & Search State
+      const [plannedPath, setPlannedPath] = useState([]);
+      const [visitedNodes, setVisitedNodes] = useState([]);
+      const [currentPathIndex, setCurrentPathIndex] = useState(0);
+      const [targetDust, setTargetDust] = useState(null);
+      
+      // Algorithm Metrics
+      const [algoMetrics, setAlgoMetrics] = useState({
+        nodesExplored: 0,
+        pathLength: 0,
+        timeMs: 0
+      });
+
+      // AI Decision Pipeline
+      const [activePipelineStage, setActivePipelineStage] = useState(0); // 0: PERCEIVE, 1: THINK, 2: PLAN, 3: ACT, 4: VERIFY
+      const [decisionLogs, setDecisionLogs] = useState([
+        { id: 1, time: '00:00:01', stage: 'PERCEIVE', msg: 'System initialized. Sensors online. ESP32 connected.', type: 'info' },
+        { id: 2, time: '00:00:02', stage: 'THINK', msg: 'Occupancy grid loaded. Awaiting start command or manual joystick navigation.', type: 'info' }
+      ]);
+
+      // Telemetry & Hardware Readings (Simulated)
+      const [battery, setBattery] = useState(85.0);
+      const [dustCollectedCount, setDustCollectedCount] = useState(0);
+      const [totalDustCount, setTotalDustCount] = useState(PRESET_MAPS.LIVING_ROOM.dusts.length);
+      const [movementsCount, setMovementsCount] = useState(0);
+      const [vacuumMotorOn, setVacuumMotorOn] = useState(false);
+      const [wheelMotorRPM, setWheelMotorRPM] = useState({ left: 0, right: 0 });
+      const [dustSensorVoltage, setDustSensorVoltage] = useState(0.48);
+      const [dustDensity, setDustDensity] = useState(18); // µg/m³
+      const [ultrasonicDistances, setUltrasonicDistances] = useState({ front: 120, left: 45, right: 85, back: 250 });
+      
+      // Display Overlays Toggles
+      const [showVisitedOverlay, setShowVisitedOverlay] = useState(true);
+      const [showPathOverlay, setShowPathOverlay] = useState(true);
+      const [showSensorBeams, setShowSensorBeams] = useState(true);
+      const [cellInteractionTool, setCellInteractionTool] = useState('OBSTACLE'); // OBSTACLE, DUST, ROBOT
+
+      // Audio Toggle
+      const [soundMuted, setSoundMuted] = useState(false);
+
+      // Presentation Slide Index
+      const [currentSlideIndex, setCurrentSlideIndex] = useState(0);
+
+      // Benchmark Results in Algo Lab
+      const [benchmarkResults, setBenchmarkResults] = useState(null);
+
+      // Victory Modal State
+      const [showVictoryModal, setShowVictoryModal] = useState(false);
+
+      // Refs for simulation loop
+      const isRunningRef = useRef(isRunning);
+      isRunningRef.current = isRunning;
+      const robotRef = useRef(robot);
+      robotRef.current = robot;
+      const gridRef = useRef(grid);
+      gridRef.current = grid;
+      const plannedPathRef = useRef(plannedPath);
+      plannedPathRef.current = plannedPath;
+      const currentPathIndexRef = useRef(currentPathIndex);
+      currentPathIndexRef.current = currentPathIndex;
+      const algoRef = useRef(algorithm);
+      algoRef.current = algorithm;
+      const simSpeedRef = useRef(simSpeed);
+      simSpeedRef.current = simSpeed;
+
+      // Sync sound state
+      useEffect(() => {
+        sound.enabled = !soundMuted;
+      }, [soundMuted]);
+
+      // Add log utility
+      const addLog = useCallback((stage, msg, type = 'info') => {
+        const d = new Date();
+        const timeStr = d.toTimeString().split(' ')[0] + '.' + String(d.getMilliseconds()).padStart(3, '0').slice(0, 2);
+        setDecisionLogs(prev => [
+          { id: Date.now() + Math.random(), time: timeStr, stage, msg, type },
+          ...prev.slice(0, 49)
+        ]);
+      }, []);
+
+      // Calculate simulated ultrasonic distance in 4 directions
+      const calculateUltrasonic = useCallback((rPos, g) => {
+        const raycast = (dy, dx) => {
+          let distCells = 0;
+          let cy = rPos.y + dy;
+          let cx = rPos.x + dx;
+          while (cy >= 0 && cy < GRID_SIZE && cx >= 0 && cx < GRID_SIZE) {
+            if (g[cy][cx] === CELL_OBSTACLE) break;
+            distCells++;
+            cy += dy;
+            cx += dx;
+          }
+          return Math.max(10, Math.min(400, Math.round(distCells * 25 + (Math.random() * 4 - 2))));
+        };
+
+        return {
+          front: raycast(-1, 0),
+          right: raycast(0, 1),
+          back: raycast(1, 0),
+          left: raycast(0, -1)
+        };
+      }, []);
+
+      // Update ultrasonic distances whenever robot or grid updates
+      useEffect(() => {
+        setUltrasonicDistances(calculateUltrasonic(robot, grid));
+      }, [robot, grid, calculateUltrasonic]);
+
+      // Find all remaining dust coordinates
+      const getRemainingDusts = useCallback((g) => {
+        const dusts = [];
+        for (let y = 0; y < GRID_SIZE; y++) {
+          for (let x = 0; x < GRID_SIZE; x++) {
+            if (g[y][x] === CELL_DUST) {
+              dusts.push({ y, x });
+            }
+          }
+        }
+        return dusts;
+      }, []);
+
+      // Reset / Load Preset Map
+      const loadPreset = useCallback((presetKey) => {
+        sound.playClick();
+        setIsRunning(false);
+        setRobotStatus('IDLE');
+        setActivePipelineStage(0);
+        setShowVictoryModal(false);
+        const preset = PRESET_MAPS[presetKey] || PRESET_MAPS.LIVING_ROOM;
+        setCurrentPreset(presetKey);
+
+        const newGrid = Array(GRID_SIZE).fill(null).map(() => Array(GRID_SIZE).fill(CELL_EMPTY));
+        preset.obstacles.forEach(([y, x]) => {
+          if (newGrid[y] && newGrid[y][x] !== undefined) newGrid[y][x] = CELL_OBSTACLE;
+        });
+        preset.dusts.forEach(([y, x]) => {
+          if (newGrid[y] && newGrid[y][x] !== undefined) newGrid[y][x] = CELL_DUST;
+        });
+
+        setGrid(newGrid);
+        setRobot({ x: preset.robot.x, y: preset.robot.y, angle: 90 });
+        setPlannedPath([]);
+        setVisitedNodes([]);
+        setCurrentPathIndex(0);
+        setTargetDust(null);
+        setDustCollectedCount(0);
+        setTotalDustCount(preset.dusts.length);
+        setMovementsCount(0);
+        setBattery(85.0);
+        setVacuumMotorOn(false);
+        setWheelMotorRPM({ left: 0, right: 0 });
+        setDustSensorVoltage(0.48);
+        setDustDensity(18);
+        setAlgoMetrics({ nodesExplored: 0, pathLength: 0, timeMs: 0 });
+        setBenchmarkResults(null);
+
+        addLog('PERCEIVE', `Loaded preset map: "${preset.name}" with ${preset.dusts.length} dust targets.`, 'info');
+      }, [addLog]);
+
+      // Randomize Dust on current obstacles
+      const handleRandomizeDust = useCallback(() => {
+        sound.playClick();
+        setIsRunning(false);
+        setRobotStatus('IDLE');
+        setShowVictoryModal(false);
+        setGrid(prev => {
+          const next = prev.map(row => row.map(cell => (cell === CELL_DUST || cell === CELL_CLEANED) ? CELL_EMPTY : cell));
+          let count = 0;
+          const targetCount = 18;
+          while (count < targetCount) {
+            const rx = Math.floor(Math.random() * GRID_SIZE);
+            const ry = Math.floor(Math.random() * GRID_SIZE);
+            if (next[ry][rx] === CELL_EMPTY && !(rx === robot.x && ry === robot.y)) {
+              next[ry][rx] = CELL_DUST;
+              count++;
+            }
+          }
+          setTotalDustCount(targetCount);
+          setDustCollectedCount(0);
+          return next;
+        });
+        setPlannedPath([]);
+        setVisitedNodes([]);
+        addLog('PERCEIVE', 'Generated 18 random dust targets across the room.', 'info');
+      }, [robot, addLog]);
+
+      // Toggle cell state with active tool
+      const handleCellClick = (y, x) => {
+        if (isRunning) return;
+        sound.playClick();
+
+        setGrid(prev => {
+          const next = prev.map(row => [...row]);
+          if (cellInteractionTool === 'OBSTACLE') {
+            if (next[y][x] === CELL_OBSTACLE) next[y][x] = CELL_EMPTY;
+            else if (next[y][x] === CELL_EMPTY || next[y][x] === CELL_CLEANED) next[y][x] = CELL_OBSTACLE;
+          } else if (cellInteractionTool === 'DUST') {
+            if (next[y][x] === CELL_DUST) {
+              next[y][x] = CELL_EMPTY;
+              setTotalDustCount(c => Math.max(0, c - 1));
+            } else if (next[y][x] === CELL_EMPTY || next[y][x] === CELL_CLEANED) {
+              next[y][x] = CELL_DUST;
+              setTotalDustCount(c => c + 1);
+            }
+          } else if (cellInteractionTool === 'ROBOT') {
+            if (next[y][x] !== CELL_OBSTACLE) {
+              setRobot(r => ({ ...r, x, y }));
+              addLog('ACT', `Relocated robot docking position to [${x}, ${y}].`, 'info');
+            }
+          }
+          return next;
+        });
+      };
+
+      // Manual Navigation (WASD / D-Pad)
+      const handleManualMove = useCallback((dy, dx, targetAngle) => {
+        sound.playStep();
+        setRobot(curr => {
+          const ny = curr.y + dy;
+          const nx = curr.x + dx;
+          if (ny < 0 || ny >= GRID_SIZE || nx < 0 || nx >= GRID_SIZE) {
+            sound.playAlert();
+            addLog('VERIFY', 'Boundary wall collision prevented by physical bumper.', 'warn');
+            return curr;
+          }
+          if (gridRef.current[ny][nx] === CELL_OBSTACLE) {
+            sound.playAlert();
+            addLog('PERCEIVE', `Ultrasonic proximity alert! Obstacle detected at [${nx}, ${ny}].`, 'warn');
+            return curr;
+          }
+
+          if (gridRef.current[ny][nx] === CELL_DUST) {
+            sound.playClean();
+            setVacuumMotorOn(true);
+            setDustCollectedCount(c => c + 1);
+            setDustSensorVoltage(3.62);
+            setDustDensity(390);
+            addLog('ACT', `Manual suction engaged! Dust cleaned at [${nx}, ${ny}].`, 'success');
+            setTimeout(() => {
+              setVacuumMotorOn(false);
+              setDustSensorVoltage(0.48);
+              setDustDensity(20);
+            }, 500);
+            setGrid(g => {
+              const n = g.map(row => [...row]);
+              n[ny][nx] = CELL_CLEANED;
+              return n;
+            });
+          } else {
+            setGrid(g => {
+              const n = g.map(row => [...row]);
+              if (n[ny][nx] === CELL_EMPTY) n[ny][nx] = CELL_CLEANED;
+              return n;
+            });
+          }
+
+          setMovementsCount(m => m + 1);
+          setBattery(b => Math.max(5, Number((b - 0.12).toFixed(1))));
+          return { x: nx, y: ny, angle: targetAngle };
+        });
+      }, [addLog]);
+
+      // ==========================================
+      // AUTONOMOUS PLANNING ENGINE
+      // ==========================================
+      const planNextTarget = useCallback(() => {
+        const remainingDusts = getRemainingDusts(gridRef.current);
+        if (remainingDusts.length === 0) {
+          setIsRunning(false);
+          setRobotStatus('FINISHED');
+          setWheelMotorRPM({ left: 0, right: 0 });
+          setVacuumMotorOn(false);
+          setActivePipelineStage(4);
+          sound.playComplete();
+          setShowVictoryModal(true);
+          addLog('VERIFY', 'Mission Complete! All dust particles collected. Returning to dock state.', 'success');
+          return null;
+        }
+
+        // 1. PERCEIVE: Find closest reachable dust particle (Greedy Nearest Neighbor target)
+        setActivePipelineStage(0);
+        setRobotStatus('PERCEIVING');
+        const currRobot = robotRef.current;
+        const activeAlgo = algoRef.current;
+
+        // Sort dusts by Manhattan distance
+        const sortedDusts = [...remainingDusts].sort((a, b) => {
+          const distA = Math.abs(currRobot.y - a.y) + Math.abs(currRobot.x - a.x);
+          const distB = Math.abs(currRobot.y - b.y) + Math.abs(currRobot.x - b.x);
+          return distA - distB;
+        });
+
+        // Find first reachable dust target
+        let chosenDust = null;
+        let chosenResult = null;
+
+        for (const candidate of sortedDusts) {
+          const res = Pathfinder.run(activeAlgo, { y: currRobot.y, x: currRobot.x }, candidate, gridRef.current);
+          if (res.path && res.path.length > 0) {
+            chosenDust = candidate;
+            chosenResult = res;
+            break;
+          }
+        }
+
+        if (!chosenDust || !chosenResult) {
+          addLog('PLAN', `No reachable path found to any remaining dust targets using ${ALGORITHMS[activeAlgo].name}. Targets blocked by obstacles.`, 'warn');
+          setIsRunning(false);
+          setRobotStatus('IDLE');
+          return null;
+        }
+
+        const manhattan = Math.abs(currRobot.y - chosenDust.y) + Math.abs(currRobot.x - chosenDust.x);
+        addLog('PERCEIVE', `Perceive: Dust detected at [${chosenDust.x}, ${chosenDust.y}] (Distance: ${manhattan} cells). Optical sensor: 3.2V.`, 'info');
+
+        // 2. THINK: Evaluate target
+        setActivePipelineStage(1);
+        setRobotStatus('THINKING');
+        setTargetDust(chosenDust);
+        addLog('THINK', `Think: Target identified at [${chosenDust.x}, ${chosenDust.y}]. Evaluating collision-free trajectory.`, 'info');
+
+        // 3. PLAN: Path finding
+        setActivePipelineStage(2);
+        setRobotStatus('PLANNING');
+        setVisitedNodes(chosenResult.visitedNodes);
+        setAlgoMetrics({
+          nodesExplored: chosenResult.nodesExplored,
+          pathLength: chosenResult.path.length > 0 ? chosenResult.path.length - 1 : 0,
+          timeMs: chosenResult.timeMs
+        });
+
+        addLog('PLAN', `Plan: ${ALGORITHMS[activeAlgo].name} computed optimal path. Steps: ${chosenResult.path.length - 1}, Nodes Explored: ${chosenResult.nodesExplored}, Time: ${chosenResult.timeMs}ms.`, 'info');
+        setPlannedPath(chosenResult.path);
+        setCurrentPathIndex(1); // 0 is start node
+        return chosenResult.path;
+      }, [getRemainingDusts, addLog]);
+
+      // Main Autonomous Simulation Loop
+      useEffect(() => {
+        if (!isRunning) return;
+
+        const baseInterval = 380;
+        const intervalTime = Math.max(50, Math.floor(baseInterval / simSpeed));
+
+        const timer = setInterval(() => {
+          if (plannedPathRef.current.length > 0 && currentPathIndexRef.current < plannedPathRef.current.length) {
+            const nextNode = plannedPathRef.current[currentPathIndexRef.current];
+            const currRobot = robotRef.current;
+
+            // 4. ACT: Move robot along path
+            setActivePipelineStage(3);
+            setRobotStatus('MOVING');
+
+            let newAngle = currRobot.angle;
+            const dy = nextNode.y - currRobot.y;
+            const dx = nextNode.x - currRobot.x;
+            if (dy === -1) newAngle = 0;   // North
+            else if (dx === 1) newAngle = 90;  // East
+            else if (dy === 1) newAngle = 180; // South
+            else if (dx === -1) newAngle = 270;// West
+
+            sound.playStep();
+            setWheelMotorRPM({ left: 140, right: 140 });
+
+            setRobot({ x: nextNode.x, y: nextNode.y, angle: newAngle });
+            setMovementsCount(m => m + 1);
+            setBattery(b => Math.max(2, Number((b - 0.08).toFixed(2))));
+
+            setGrid(prev => {
+              const nextGrid = prev.map(row => [...row]);
+              if (nextGrid[nextNode.y][nextNode.x] === CELL_EMPTY) {
+                nextGrid[nextNode.y][nextNode.x] = CELL_CLEANED;
+              }
+              return nextGrid;
+            });
+
+            currentPathIndexRef.current += 1;
+            setCurrentPathIndex(currentPathIndexRef.current);
+
+            // Check if robot arrived at dust target
+            if (currentPathIndexRef.current >= plannedPathRef.current.length) {
+              setActivePipelineStage(4); // 5. VERIFY
+              setRobotStatus('CLEANING');
+              sound.playClean();
+              setVacuumMotorOn(true);
+              setWheelMotorRPM({ left: 0, right: 0 });
+              setDustSensorVoltage(3.85);
+              setDustDensity(420);
+
+              addLog('ACT', `Act: Robot arrived at [${nextNode.x}, ${nextNode.y}]. Vacuum motor engaged at 18,500 RPM.`, 'info');
+
+              setTimeout(() => {
+                setGrid(prev => {
+                  const nextGrid = prev.map(row => [...row]);
+                  nextGrid[nextNode.y][nextNode.x] = CELL_CLEANED;
+                  return nextGrid;
+                });
+                setDustCollectedCount(c => c + 1);
+                setVacuumMotorOn(false);
+                setDustSensorVoltage(0.48);
+                setDustDensity(18);
+                addLog('VERIFY', `Verify: Cleaning completed at [${nextNode.x}, ${nextNode.y}]. Sensor confirms dust cleared. Cell updated to green.`, 'success');
+
+                plannedPathRef.current = [];
+                setPlannedPath([]);
+                currentPathIndexRef.current = 0;
+                setCurrentPathIndex(0);
+                planNextTarget();
+              }, Math.min(280, intervalTime));
+            }
+          } else {
+            planNextTarget();
+          }
+        }, intervalTime);
+
+        return () => clearInterval(timer);
+      }, [isRunning, simSpeed, planNextTarget, addLog]);
+
+      // Start / Pause Controls
+      const toggleCleaning = () => {
+        sound.playClick();
+        if (isRunning) {
+          setIsRunning(false);
+          setRobotStatus('PAUSED');
+          setWheelMotorRPM({ left: 0, right: 0 });
+          setVacuumMotorOn(false);
+          addLog('THINK', 'Autonomous execution paused by user override.', 'warn');
+        } else {
+          setIsRunning(true);
+          setRobotStatus('PERCEIVING');
+          addLog('THINK', `Autonomous cleaning engaged. Active Algorithm: ${ALGORITHMS[algorithm].name}.`, 'info');
+          if (plannedPath.length === 0 || currentPathIndex >= plannedPath.length) {
+            planNextTarget();
+          }
+        }
+      };
+
+      // Reset Simulation
+      const handleReset = () => {
+        sound.playClick();
+        loadPreset(currentPreset);
+      };
+
+      // Run Benchmark for Algorithm Comparison Lab
+      const runBenchmark = () => {
+        sound.playClick();
+        const start = { y: robot.y, x: robot.x };
+        const dusts = getRemainingDusts(grid);
+        if (dusts.length === 0) {
+          alert("No dust remaining on the board! Please click 'Randomize Dust' or choose a preset map first.");
+          return;
+        }
+
+        const target = dusts[0];
+        const results = {};
+
+        ['ASTAR', 'DIJKSTRA', 'BFS', 'DFS'].forEach(algoKey => {
+          const res = Pathfinder.run(algoKey, start, target, grid);
+          results[algoKey] = {
+            name: ALGORITHMS[algoKey].name,
+            badge: ALGORITHMS[algoKey].badge,
+            type: ALGORITHMS[algoKey].type,
+            optimality: ALGORITHMS[algoKey].optimality,
+            complexity: ALGORITHMS[algoKey].complexity,
+            nodesExplored: res.nodesExplored,
+            pathLength: res.path.length > 0 ? res.path.length - 1 : 0,
+            timeMs: res.timeMs,
+            success: res.path.length > 0
+          };
+        });
+
+        setBenchmarkResults(results);
+        addLog('THINK', `Executed 4-way algorithm benchmark on target [${target.x}, ${target.y}].`, 'info');
+      };
+
+      // Percentage of Room Cleaned
+      const roomCleanedStats = useMemo(() => {
+        let emptyCount = 0;
+        let cleanedCount = 0;
+        let obstacleCount = 0;
+        grid.forEach(row => {
+          row.forEach(cell => {
+            if (cell === CELL_EMPTY || cell === CELL_DUST) emptyCount++;
+            else if (cell === CELL_CLEANED) cleanedCount++;
+            else if (cell === CELL_OBSTACLE) obstacleCount++;
+          });
+        });
+        const totalNavigable = GRID_SIZE * GRID_SIZE - obstacleCount;
+        const percent = totalNavigable > 0 ? Math.min(100, Math.round((cleanedCount / totalNavigable) * 100)) : 0;
+        return { percent, cleanedCount, totalNavigable };
+      }, [grid]);
+
+      // Path Efficiency Calculation
+      const pathEfficiency = useMemo(() => {
+        if (movementsCount === 0 || dustCollectedCount === 0) return 100;
+        const idealSteps = dustCollectedCount * 6;
+        return Math.min(99, Math.max(45, Math.round((idealSteps / movementsCount) * 100)));
+      }, [movementsCount, dustCollectedCount]);
+
+      return (
+        <div className="min-h-screen flex flex-col bg-[#060911] text-slate-200">
+          
+          {/* ============================================================== */}
+          {/* TOP BAR / HUD HEADER */}
+          {/* ============================================================== */}
+          <header className="hud-card px-5 py-3 border-b border-cyan-500/20 flex flex-wrap items-center justify-between gap-4 z-30 sticky top-0 bg-[#0a0f1d]/95 backdrop-blur-md">
+            {/* Brand & Subtitle */}
+            <div className="flex items-center gap-3">
+              <div className="relative w-10 h-10 rounded-lg bg-cyan-950 border border-cyan-500/40 flex items-center justify-center glow-cyan">
+                <div className="absolute inset-0 rounded-lg border border-cyan-400/30 animate-spin-slow"></div>
+                <svg className="w-6 h-6 text-cyan-400 animate-pulse" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <circle cx="12" cy="12" r="9" strokeWidth="2" strokeDasharray="4 2" />
+                  <circle cx="12" cy="12" r="3" fill="#00f2fe" />
+                  <path d="M12 3v4M12 17v4M3 12h4M17 12h4" strokeWidth="2" />
+                </svg>
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h1 className="text-xl font-bold tracking-wider text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-teal-300 to-white font-mono">
+                    DustBot
+                  </h1>
+                  <span className="px-2 py-0.5 text-[10px] font-mono tracking-widest uppercase bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 rounded">
+                    INTELLIGENT AUTONOMOUS CLEANING AGENT
+                  </span>
+                </div>
+                <p className="text-xs text-slate-400 font-mono tracking-wide">
+                  AI-Powered Robotics Dashboard &bull; AIML Capstone Project Presentation
+                </p>
+              </div>
+            </div>
+
+            {/* Quick Status Badges */}
+            <div className="flex items-center gap-3 text-xs font-mono">
+              {/* Robot Status Panel */}
+              <div className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-slate-900/90 border border-slate-700/60">
+                <span className={`w-2.5 h-2.5 rounded-full ${
+                  robotStatus === 'MOVING' ? 'bg-cyan-400 animate-ping' :
+                  robotStatus === 'CLEANING' ? 'bg-emerald-400 animate-bounce' :
+                  robotStatus === 'PLANNING' ? 'bg-purple-400 animate-pulse' :
+                  robotStatus === 'PAUSED' ? 'bg-amber-400' : 'bg-slate-500'
+                }`}></span>
+                <span className="text-slate-400">ROBOT STATUS:</span>
+                <span className={`font-bold tracking-wider ${
+                  robotStatus === 'CLEANING' ? 'text-emerald-400' :
+                  robotStatus === 'MOVING' ? 'text-cyan-400' :
+                  robotStatus === 'PLANNING' ? 'text-purple-400' :
+                  robotStatus === 'PAUSED' ? 'text-amber-400' : 'text-slate-300'
+                }`}>
+                  {robotStatus}
+                </span>
+              </div>
+
+              {/* Battery Percentage */}
+              <div className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-slate-900/90 border border-slate-700/60">
+                <svg className={`w-4 h-4 ${battery < 20 ? 'text-rose-400 animate-pulse' : 'text-emerald-400'}`} fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M16 4h-2V2H10v2H8C6.9 4 6 4.9 6 6v14c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H8V6h8v14z"/>
+                  <rect x="8" y={20 - (battery / 100) * 14} width="8" height={(battery / 100) * 14} fill="currentColor" opacity="0.8"/>
+                </svg>
+                <span className="text-slate-400">BATTERY:</span>
+                <span className="font-bold text-slate-200">{battery.toFixed(0)}%</span>
+              </div>
+
+              {/* Dust Collected Counter */}
+              <div className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-slate-900/90 border border-slate-700/60">
+                <span className="w-2.5 h-2.5 rounded-full bg-amber-500 shadow-[0_0_5px_#f59e0b]"></span>
+                <span className="text-slate-400">DUST COLLECTED:</span>
+                <span className="font-bold text-amber-400">{dustCollectedCount}</span>
+                <span className="text-slate-500">/ {totalDustCount}</span>
+              </div>
+
+              {/* Sound Toggle */}
+              <button
+                onClick={() => setSoundMuted(m => !m)}
+                className={`p-2 rounded-md border text-xs transition-colors ${
+                  soundMuted
+                    ? 'border-slate-700 bg-slate-900 text-slate-500'
+                    : 'border-cyan-500/40 bg-cyan-950/40 text-cyan-400 hover:bg-cyan-900/40'
+                }`}
+                title={soundMuted ? 'Unmute Audio' : 'Mute Audio'}
+              >
+                {soundMuted ? (
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2" />
+                  </svg>
+                ) : (
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+                  </svg>
+                )}
+              </button>
+            </div>
+          </header>
+
+          {/* ============================================================== */}
+          {/* SUB-HEADER NAVIGATION BAR */}
+          {/* ============================================================== */}
+          <div className="bg-[#0a0f1d] border-b border-slate-800 px-5 py-2.5 flex flex-wrap items-center justify-between gap-3 text-sm z-20">
+            {/* Primary Nav Tabs */}
+            <div className="flex items-center gap-1 font-mono text-xs overflow-x-auto">
+              {[
+                { id: 'DASHBOARD', label: '1. SIMULATION DASHBOARD' },
+                { id: 'ALGO_LAB', label: '2. ALGORITHM COMPARISON LAB' },
+                { id: 'AI_BRAIN', label: '3. AI DECISION-MAKING PANEL' },
+                { id: 'TELEMETRY', label: '4. HARDWARE MONITORING' },
+                { id: 'PRESENTATION', label: '5. PRESENTATION MODE' }
+              ].map(tab => (
+                <button
+                  key={tab.id}
+                  onClick={() => { sound.playClick(); setActiveTab(tab.id); }}
+                  className={`px-3 py-1.5 rounded-md font-semibold tracking-wider whitespace-nowrap transition-all ${
+                    activeTab === tab.id
+                      ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-400/40 shadow-[0_0_10px_rgba(0,242,254,0.2)]'
+                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Quick Master Controls */}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={toggleCleaning}
+                className={`px-4 py-1.5 rounded-md text-xs font-mono font-bold tracking-wider flex items-center gap-2 transition-all shadow-md ${
+                  isRunning
+                    ? 'bg-amber-600 hover:bg-amber-500 text-white border border-amber-400/50'
+                    : 'bg-gradient-to-r from-cyan-600 to-teal-500 hover:from-cyan-500 hover:to-teal-400 text-slate-950 font-black border border-cyan-300'
+                }`}
+              >
+                {isRunning ? (
+                  <>
+                    <span className="w-2 h-2 rounded-sm bg-white animate-pulse"></span>
+                    PAUSE
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24">
+                      <polygon points="5 3 19 12 5 21 5 3"/>
+                    </svg>
+                    START CLEANING
+                  </>
+                )}
+              </button>
+
+              <button
+                onClick={handleReset}
+                className="px-3 py-1.5 rounded-md text-xs font-mono text-slate-300 bg-slate-800/80 hover:bg-slate-700 border border-slate-700 hover:border-slate-500 transition-colors flex items-center gap-1"
+                title="Reset simulation to initial room state"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                RESET
+              </button>
+            </div>
+          </div>
+
+          {/* ============================================================== */}
+          {/* MAIN WORKSPACE CONTENT AREA */}
+          {/* ============================================================== */}
+          <main className="flex-1 p-4 lg:p-6 overflow-y-auto">
+            
+            {/* VIEW 1: MAIN SIMULATION DASHBOARD */}
+            {activeTab === 'DASHBOARD' && (
+              <div className="grid grid-cols-1 xl:grid-cols-12 gap-5 max-w-[1700px] mx-auto">
+                
+                {/* LEFT COLUMN: SIMULATION CANVAS & INTERACTIVE GRID (7 COLS) */}
+                <div className="xl:col-span-7 flex flex-col gap-4">
+                  
+                  {/* Grid Toolbar & Configs */}
+                  <div className="hud-card p-3 rounded-lg flex flex-wrap items-center justify-between gap-3 text-xs font-mono">
+                    
+                    {/* Preset Room Selector */}
+                    <div className="flex items-center gap-2">
+                      <span className="text-slate-400 font-semibold">ROOM:</span>
+                      <select
+                        value={currentPreset}
+                        onChange={(e) => loadPreset(e.target.value)}
+                        className="bg-slate-900 border border-slate-700 text-cyan-300 rounded px-2.5 py-1 text-xs focus:outline-none focus:border-cyan-500"
+                      >
+                        <option value="LIVING_ROOM">Living Room Layout</option>
+                        <option value="OFFICE_MAZE">Office Cubicle Maze</option>
+                        <option value="DUST_FIELD">Heavy Dust Field</option>
+                        <option value="ARENA_CLEAR">Open Testing Arena</option>
+                      </select>
+                    </div>
+
+                    {/* AI Algorithm Selector Dropdown */}
+                    <div className="flex items-center gap-2">
+                      <span className="text-slate-400 font-semibold">ALGORITHM:</span>
+                      <select
+                        value={algorithm}
+                        onChange={(e) => {
+                          sound.playClick();
+                          setAlgorithm(e.target.value);
+                          addLog('THINK', `Selected AI Search Algorithm: ${ALGORITHMS[e.target.value].name}`, 'info');
+                        }}
+                        className="bg-slate-900 border border-cyan-500/50 text-cyan-300 font-bold rounded px-2.5 py-1 text-xs focus:outline-none focus:border-cyan-400"
+                      >
+                        <option value="ASTAR">A* (A-Star Search) [Default]</option>
+                        <option value="DIJKSTRA">Dijkstra's Algorithm</option>
+                        <option value="BFS">BFS (Breadth First Search)</option>
+                        <option value="DFS">DFS (Depth First Search)</option>
+                      </select>
+                    </div>
+
+                    {/* Simulation Speed Slider */}
+                    <div className="flex items-center gap-2">
+                      <span className="text-slate-400 font-semibold">SPEED:</span>
+                      <div className="flex items-center gap-1 bg-slate-900 p-0.5 rounded border border-slate-700">
+                        {[1, 2, 4, 8].map(s => (
+                          <button
+                            key={s}
+                            onClick={() => { sound.playClick(); setSimSpeed(s); }}
+                            className={`px-2 py-0.5 rounded text-[11px] font-bold ${
+                              simSpeed === s ? 'bg-cyan-500 text-slate-950' : 'text-slate-400 hover:text-slate-200'
+                            }`}
+                          >
+                            {s}x
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Randomize Dust Button */}
+                    <button
+                      onClick={handleRandomizeDust}
+                      className="px-2.5 py-1 rounded bg-amber-950/60 hover:bg-amber-900/60 text-amber-300 border border-amber-500/40 flex items-center gap-1.5"
+                    >
+                      <svg className="w-3.5 h-3.5 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
+                      </svg>
+                      RANDOMIZE DUST
+                    </button>
+                  </div>
+
+                  {/* 2D Interactive Grid Board */}
+                  <div className="hud-card p-4 rounded-xl flex flex-col items-center justify-center relative overflow-hidden">
+                    
+                    {/* Top Status Banner */}
+                    <div className="w-full flex items-center justify-between text-xs font-mono text-slate-400 pb-2 mb-2 border-b border-slate-800">
+                      <div className="flex items-center gap-2">
+                        <span className="w-2 h-2 rounded-full bg-cyan-400"></span>
+                        <span className="text-slate-300">Room Simulation: 16 × 16 Grid (256 Cells)</span>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className="text-slate-400">Robot Pose: <span className="text-cyan-400 font-bold">[{robot.x}, {robot.y}]</span> @ {robot.angle}°</span>
+                        <span className="text-slate-400">Target Dust: <span className="text-amber-400 font-bold">{targetDust ? `[${targetDust.x}, ${targetDust.y}]` : 'Scanning...'}</span></span>
+                      </div>
+                    </div>
+
+                    {/* Grid Render Container */}
+                    <div className="relative p-2 bg-[#080d1a] border border-cyan-500/20 rounded-lg shadow-2xl select-none">
+                      
+                      {/* Grid Cells */}
+                      <div
+                        className="grid gap-[2px] bg-slate-900/80 p-1 rounded"
+                        style={{
+                          gridTemplateColumns: `repeat(${GRID_SIZE}, minmax(0, 1fr))`,
+                          width: 'min(75vw, 560px)',
+                          height: 'min(75vw, 560px)'
+                        }}
+                      >
+                        {grid.map((row, y) =>
+                          row.map((cell, x) => {
+                            const isRobot = robot.x === x && robot.y === y;
+                            const isPlanned = showPathOverlay && plannedPath.some((p, i) => i > 0 && p.x === x && p.y === y);
+                            const isVisited = showVisitedOverlay && visitedNodes.some(v => v.x === x && v.y === y) && !isPlanned && !isRobot;
+                            const isTarget = targetDust && targetDust.x === x && targetDust.y === y;
+
+                            return (
+                              <div
+                                key={`${y}-${x}`}
+                                onClick={() => handleCellClick(y, x)}
+                                className={`relative rounded-sm flex items-center justify-center cursor-pointer transition-all duration-150 ${
+                                  cell === CELL_OBSTACLE
+                                    ? 'bg-gradient-to-br from-slate-700 to-slate-800 border border-slate-600 shadow-inner'
+                                    : cell === CELL_CLEANED
+                                    ? 'bg-emerald-950/50 border border-emerald-500/40'
+                                    : cell === CELL_DUST
+                                    ? 'bg-amber-950/30 border border-amber-600/30'
+                                    : 'bg-[#0b1224] border border-slate-800/60 hover:border-cyan-500/50'
+                                } ${isVisited ? 'ring-1 ring-purple-500/40 bg-purple-950/25' : ''}`}
+                              >
+                                {/* Planned Path Line / Breadcrumb */}
+                                {isPlanned && (
+                                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                                    <div className="w-2.5 h-2.5 rounded-full bg-cyan-400/80 shadow-[0_0_8px_#00f2fe] animate-pulse"></div>
+                                  </div>
+                                )}
+
+                                {/* Cleaned Area Green Trail */}
+                                {cell === CELL_CLEANED && !isRobot && !isPlanned && (
+                                  <div className="w-1.5 h-1.5 rounded-full bg-emerald-400/60"></div>
+                                )}
+
+                                {/* Orange Dot: Dust Particle */}
+                                {cell === CELL_DUST && !isRobot && (
+                                  <div className={`relative flex items-center justify-center ${isTarget ? 'scale-125' : ''}`}>
+                                    <div className="w-3 h-3 rounded-full bg-amber-500 shadow-[0_0_8px_#f59e0b] animate-pulse-fast"></div>
+                                    <div className="absolute -inset-1 rounded-full border border-amber-400/40 animate-ping"></div>
+                                  </div>
+                                )}
+
+                                {/* Grey Block: Obstacle */}
+                                {cell === CELL_OBSTACLE && (
+                                  <div className="w-full h-full flex items-center justify-center text-[10px] text-slate-500 select-none">
+                                    <svg className="w-3.5 h-3.5 text-slate-500 opacity-60" fill="currentColor" viewBox="0 0 20 20">
+                                      <path fillRule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 011 1v12a1 1 0 01-1 1H4a1 1 0 01-1-1V4zm2 2v8h10V6H5z" clipRule="evenodd" />
+                                    </svg>
+                                  </div>
+                                )}
+
+                                {/* Blue Icon: Robot */}
+                                {isRobot && (
+                                  <div
+                                    className="absolute inset-0 flex items-center justify-center z-10 pointer-events-none transition-transform duration-200"
+                                    style={{ transform: `rotate(${robot.angle}deg)` }}
+                                  >
+                                    {/* Vacuum Suction Vortex Animation */}
+                                    {vacuumMotorOn && (
+                                      <div className="absolute -inset-2.5 rounded-full border-2 border-emerald-400 border-dashed animate-spin"></div>
+                                    )}
+
+                                    {/* Ultrasonic Sensor Beam Cone */}
+                                    {showSensorBeams && (
+                                      <div className="absolute -top-6 w-8 h-8 pointer-events-none opacity-40">
+                                        <div className="w-full h-full bg-cyan-400/25 rounded-t-full"></div>
+                                      </div>
+                                    )}
+
+                                    {/* Robot Blue Circular Chassis */}
+                                    <div className="relative w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-gradient-to-b from-cyan-400 to-blue-600 border-2 border-white shadow-[0_0_12px_#00f2fe] flex items-center justify-center">
+                                      <div className="absolute -left-1 w-1.5 h-3.5 bg-slate-900 rounded-sm"></div>
+                                      <div className="absolute -right-1 w-1.5 h-3.5 bg-slate-900 rounded-sm"></div>
+                                      
+                                      {/* Lidar Turret */}
+                                      <div className="w-3 h-3 rounded-full bg-slate-950 border border-cyan-200 flex items-center justify-center">
+                                        <div className="w-1 h-1 rounded-full bg-cyan-300 animate-ping"></div>
+                                      </div>
+
+                                      {/* Direction Pointer Arrow */}
+                                      <div className="absolute top-0.5 w-1.5 h-1.5 border-t-2 border-r-2 border-white transform -rotate-45"></div>
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Grid Legend & Interactive Drawing Tools */}
+                    <div className="w-full mt-4 pt-3 border-t border-slate-800 flex flex-wrap items-center justify-between gap-3 text-xs font-mono">
+                      
+                      {/* Cell State Legend */}
+                      <div className="flex flex-wrap items-center gap-4">
+                        <div className="flex items-center gap-1.5">
+                          <span className="w-3 h-3 rounded-full bg-cyan-400 border border-white"></span>
+                          <span className="text-slate-300">Blue: Robot</span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <span className="w-3 h-3 rounded-full bg-amber-500 shadow-[0_0_5px_#f59e0b]"></span>
+                          <span className="text-slate-300">Orange: Dust</span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <span className="w-3 h-3 rounded-sm bg-slate-700 border border-slate-600"></span>
+                          <span className="text-slate-300">Grey: Obstacle</span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <span className="w-3 h-3 rounded-sm bg-emerald-950 border border-emerald-500/50"></span>
+                          <span className="text-slate-300">Green: Cleaned</span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <span className="w-3 h-3 rounded-sm bg-[#0b1224] border border-slate-700"></span>
+                          <span className="text-slate-300">White/Dark: Unexplored</span>
+                        </div>
+                      </div>
+
+                      {/* Click-to-Draw Tool Selection */}
+                      <div className="flex items-center gap-2">
+                        <span className="text-slate-400">Click Tool:</span>
+                        <div className="flex rounded border border-slate-700 bg-slate-900 p-0.5">
+                          {[
+                            { id: 'OBSTACLE', label: 'Add/Remove Obstacle' },
+                            { id: 'DUST', label: 'Drop Dust' },
+                            { id: 'ROBOT', label: 'Set Robot Dock' }
+                          ].map(tool => (
+                            <button
+                              key={tool.id}
+                              onClick={() => { sound.playClick(); setCellInteractionTool(tool.id); }}
+                              className={`px-2 py-0.5 rounded text-[11px] font-bold ${
+                                cellInteractionTool === tool.id
+                                  ? 'bg-cyan-500 text-slate-950'
+                                  : 'text-slate-400 hover:text-slate-200'
+                              }`}
+                            >
+                              {tool.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Overlay Visibility Toggles */}
+                    <div className="w-full mt-2 flex flex-wrap items-center justify-end gap-3 text-[11px] font-mono text-slate-400">
+                      <label className="flex items-center gap-1.5 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={showPathOverlay}
+                          onChange={(e) => setShowPathOverlay(e.target.checked)}
+                          className="rounded bg-slate-800 border-slate-700 text-cyan-500 focus:ring-0"
+                        />
+                        <span>Show Planned Path</span>
+                      </label>
+                      <label className="flex items-center gap-1.5 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={showVisitedOverlay}
+                          onChange={(e) => setShowVisitedOverlay(e.target.checked)}
+                          className="rounded bg-slate-800 border-slate-700 text-purple-500 focus:ring-0"
+                        />
+                        <span>Show Visited Nodes</span>
+                      </label>
+                      <label className="flex items-center gap-1.5 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={showSensorBeams}
+                          onChange={(e) => setShowSensorBeams(e.target.checked)}
+                          className="rounded bg-slate-800 border-slate-700 text-teal-500 focus:ring-0"
+                        />
+                        <span>Show Ultrasonic Cones</span>
+                      </label>
+                    </div>
+                  </div>
+
+                  {/* Manual Robot Movement Pad */}
+                  <div className="hud-card p-4 rounded-lg flex flex-wrap items-center justify-between gap-4">
+                    <div>
+                      <h4 className="text-xs font-mono font-bold text-cyan-400 tracking-wider flex items-center gap-1.5">
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+                        </svg>
+                        MANUAL ROBOT MOVEMENT
+                      </h4>
+                      <p className="text-[11px] text-slate-400 font-mono mt-0.5">
+                        Drive the robot manually using the D-Pad to test real-time ultrasonic obstacle collision avoidance.
+                      </p>
+                    </div>
+
+                    {/* D-Pad Buttons */}
+                    <div className="flex flex-col items-center gap-1 font-mono">
+                      <button
+                        onClick={() => handleManualMove(-1, 0, 0)}
+                        className="w-10 h-9 rounded bg-slate-800 hover:bg-cyan-600 hover:text-slate-950 text-slate-200 border border-slate-700 font-bold flex items-center justify-center transition-colors active:scale-95"
+                        title="Move North"
+                      >
+                        ▲
+                      </button>
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => handleManualMove(0, -1, 270)}
+                          className="w-10 h-9 rounded bg-slate-800 hover:bg-cyan-600 hover:text-slate-950 text-slate-200 border border-slate-700 font-bold flex items-center justify-center transition-colors active:scale-95"
+                          title="Move West"
+                        >
+                          ◀
+                        </button>
+                        <button
+                          onClick={() => handleManualMove(1, 0, 180)}
+                          className="w-10 h-9 rounded bg-slate-800 hover:bg-cyan-600 hover:text-slate-950 text-slate-200 border border-slate-700 font-bold flex items-center justify-center transition-colors active:scale-95"
+                          title="Move South"
+                        >
+                          ▼
+                        </button>
+                        <button
+                          onClick={() => handleManualMove(0, 1, 90)}
+                          className="w-10 h-9 rounded bg-slate-800 hover:bg-cyan-600 hover:text-slate-950 text-slate-200 border border-slate-700 font-bold flex items-center justify-center transition-colors active:scale-95"
+                          title="Move East"
+                        >
+                          ▶
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* RIGHT COLUMN: AI BRAIN, TELEMETRY & ANALYTICS (5 COLS) */}
+                <div className="xl:col-span-5 flex flex-col gap-4">
+                  
+                  {/* 1. AUTONOMOUS AGENT DECISION-MAKING PANEL */}
+                  <div className="hud-card p-4 rounded-xl">
+                    <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+                      <h3 className="text-xs font-mono font-bold tracking-wider text-cyan-400 flex items-center gap-2">
+                        <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse"></span>
+                        AI DECISION-MAKING PANEL
+                      </h3>
+                      <span className="text-[10px] font-mono text-slate-400">AGENT CYCLE</span>
+                    </div>
+
+                    {/* 5-Step Badge Chain: PERCEIVE -> THINK -> PLAN -> ACT -> VERIFY */}
+                    <div className="grid grid-cols-5 gap-1.5 my-3 text-center font-mono">
+                      {[
+                        { step: 0, label: 'PERCEIVE', icon: '👁️', desc: 'Dust Sensing' },
+                        { step: 1, label: 'THINK', icon: '🧠', desc: 'Targeting' },
+                        { step: 2, label: 'PLAN', icon: '📐', desc: 'Algorithm' },
+                        { step: 3, label: 'ACT', icon: '⚡', desc: 'Wheel Motors' },
+                        { step: 4, label: 'VERIFY', icon: '✓', desc: 'Cleaning Done' }
+                      ].map((item) => {
+                        const isActive = activePipelineStage === item.step && isRunning;
+                        return (
+                          <div
+                            key={item.step}
+                            className={`p-2 rounded border transition-all ${
+                              isActive
+                                ? 'bg-cyan-950 border-cyan-400 text-cyan-300 shadow-[0_0_12px_rgba(0,242,254,0.4)] scale-105'
+                                : 'bg-slate-900/60 border-slate-800 text-slate-500'
+                            }`}
+                          >
+                            <div className="text-sm">{item.icon}</div>
+                            <div className="text-[10px] font-black tracking-tight mt-0.5">{item.label}</div>
+                            <div className="text-[8px] text-slate-400 truncate">{item.desc}</div>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* Live Activity Logs */}
+                    <div className="mt-3 bg-[#080d1a] border border-slate-800 rounded p-2.5 h-44 overflow-y-auto font-mono text-[11px] space-y-1.5">
+                      {decisionLogs.map((log) => (
+                        <div key={log.id} className="flex items-start gap-2 border-b border-slate-900/80 pb-1">
+                          <span className="text-slate-500 text-[10px] shrink-0">{log.time}</span>
+                          <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold shrink-0 ${
+                            log.stage === 'PERCEIVE' ? 'bg-blue-950 text-blue-300 border border-blue-800' :
+                            log.stage === 'THINK' ? 'bg-purple-950 text-purple-300 border border-purple-800' :
+                            log.stage === 'PLAN' ? 'bg-cyan-950 text-cyan-300 border border-cyan-800' :
+                            log.stage === 'ACT' ? 'bg-amber-950 text-amber-300 border border-amber-800' :
+                            'bg-emerald-950 text-emerald-300 border border-emerald-800'
+                          }`}>
+                            {log.stage}
+                          </span>
+                          <span className={`text-xs ${
+                            log.type === 'success' ? 'text-emerald-400' :
+                            log.type === 'warn' ? 'text-amber-400' : 'text-slate-300'
+                          }`}>
+                            {log.msg}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* 2. PERFORMANCE ANALYTICS PANEL */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                    <div className="hud-card p-3 rounded-lg">
+                      <div className="text-[10px] font-mono text-slate-400">TOTAL DUST</div>
+                      <div className="text-xl font-mono font-bold text-amber-400 mt-1">
+                        {totalDustCount} <span className="text-xs text-slate-400">spots</span>
+                      </div>
+                      <div className="text-[10px] text-slate-500 mt-0.5">
+                        {totalDustCount - dustCollectedCount} remaining
+                      </div>
+                    </div>
+
+                    <div className="hud-card p-3 rounded-lg">
+                      <div className="text-[10px] font-mono text-slate-400">ROOM CLEANED</div>
+                      <div className="text-xl font-mono font-bold text-cyan-400 mt-1">
+                        {roomCleanedStats.percent}%
+                      </div>
+                      <div className="text-[10px] text-slate-500 mt-0.5">
+                        {roomCleanedStats.cleanedCount} / {roomCleanedStats.totalNavigable} cells
+                      </div>
+                    </div>
+
+                    <div className="hud-card p-3 rounded-lg">
+                      <div className="text-[10px] font-mono text-slate-400">MOVEMENTS</div>
+                      <div className="text-xl font-mono font-bold text-slate-200 mt-1">
+                        {movementsCount}
+                      </div>
+                      <div className="text-[10px] text-slate-500 mt-0.5">
+                        Steps traveled
+                      </div>
+                    </div>
+
+                    <div className="hud-card p-3 rounded-lg">
+                      <div className="text-[10px] font-mono text-slate-400">PATH EFFICIENCY</div>
+                      <div className="text-xl font-mono font-bold text-purple-400 mt-1">
+                        {pathEfficiency}%
+                      </div>
+                      <div className="text-[10px] text-slate-500 mt-0.5">
+                        Optimal ratio
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 3. SENSOR MONITORING & HARDWARE PANEL */}
+                  <div className="hud-card p-4 rounded-xl">
+                    <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+                      <h3 className="text-xs font-mono font-bold tracking-wider text-cyan-400 flex items-center gap-2">
+                        <svg className="w-4 h-4 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />
+                        </svg>
+                        HARDWARE & SENSOR MONITORING PANEL
+                      </h3>
+                      <span className="text-[9px] font-mono px-2 py-0.5 rounded bg-amber-950/80 text-amber-300 border border-amber-600/40">
+                        SIMULATED PROTOTYPE
+                      </span>
+                    </div>
+
+                    {/* Sensor Readings & Radar Canvas */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-3 font-mono text-xs items-center">
+                      
+                      {/* Interactive Radar Canvas */}
+                      <div className="flex justify-center bg-[#080d1a] p-3 rounded border border-slate-800">
+                        <RadarCanvas distances={ultrasonicDistances} />
+                      </div>
+
+                      {/* Hardware Readings Summary */}
+                      <div className="md:col-span-2 grid grid-cols-2 gap-2">
+                        
+                        {/* ESP32 Controller */}
+                        <div className="bg-[#080d1a] p-2.5 rounded border border-slate-800">
+                          <div className="text-[10px] text-slate-400 flex justify-between">
+                            <span>ESP32 CONTROLLER</span>
+                            <span className="text-emerald-400 font-bold">CONNECTED</span>
+                          </div>
+                          <div className="text-slate-300 text-[11px] mt-1">
+                            Freq: <span className="text-cyan-400">240 MHz</span>
+                          </div>
+                          <div className="text-slate-500 text-[10px]">Dual-Core Xtensa LX6</div>
+                        </div>
+
+                        {/* Ultrasonic Sensor */}
+                        <div className="bg-[#080d1a] p-2.5 rounded border border-slate-800">
+                          <div className="text-[10px] text-slate-400 flex justify-between">
+                            <span>ULTRASONIC SENSOR</span>
+                            <span className="text-emerald-400 font-bold">ACTIVE</span>
+                          </div>
+                          <div className="text-slate-300 text-[11px] mt-1">
+                            Front: <span className="text-cyan-400 font-bold">{ultrasonicDistances.front} cm</span>
+                          </div>
+                          <div className="text-slate-500 text-[10px]">Left: {ultrasonicDistances.left}cm | Right: {ultrasonicDistances.right}cm</div>
+                        </div>
+
+                        {/* Dust Detection Sensor */}
+                        <div className="bg-[#080d1a] p-2.5 rounded border border-slate-800">
+                          <div className="text-[10px] text-slate-400 flex justify-between">
+                            <span>DUST SENSOR (GP2Y)</span>
+                            <span className="text-emerald-400 font-bold">ACTIVE</span>
+                          </div>
+                          <div className="text-amber-300 text-[11px] mt-1">
+                            {dustDensity} µg/m³ <span className="text-slate-400">({dustSensorVoltage.toFixed(2)}V)</span>
+                          </div>
+                          <div className="text-slate-500 text-[10px]">Optical IR Phototransistor</div>
+                        </div>
+
+                        {/* Motors Status */}
+                        <div className="bg-[#080d1a] p-2.5 rounded border border-slate-800">
+                          <div className="text-[10px] text-slate-400 flex justify-between">
+                            <span>WHEEL MOTORS</span>
+                            <span className={wheelMotorRPM.left > 0 ? 'text-cyan-400 font-bold' : 'text-slate-500 font-bold'}>
+                              {wheelMotorRPM.left > 0 ? 'RUNNING' : 'STOPPED'}
+                            </span>
+                          </div>
+                          <div className="text-slate-300 text-[11px] mt-1 flex justify-between">
+                            <span>Vacuum Motor:</span>
+                            <span className={vacuumMotorOn ? 'text-emerald-400 font-bold' : 'text-slate-500 font-bold'}>
+                              {vacuumMotorOn ? 'ON (18.5k RPM)' : 'OFF'}
+                            </span>
+                          </div>
+                          <div className="text-slate-500 text-[10px]">Battery: {battery.toFixed(0)}% (3S LiPo)</div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="mt-2 text-center text-[10px] font-mono text-slate-500">
+                      * All hardware values are simulated for the academic software prototype demonstration.
+                    </div>
+                  </div>
+
+                  {/* 4. ACTIVE ALGORITHM METRICS CARD */}
+                  <div className="hud-card p-4 rounded-xl">
+                    <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+                      <h3 className="text-xs font-mono font-bold tracking-wider text-purple-400 flex items-center gap-2">
+                        <svg className="w-4 h-4 text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                        </svg>
+                        AI SEARCH METRICS ({ALGORITHMS[algorithm].name.split(' ')[0]})
+                      </h3>
+                      <span className="text-[10px] font-mono text-slate-400">
+                        {ALGORITHMS[algorithm].badge}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-2 mt-3 text-center font-mono">
+                      <div className="bg-[#080d1a] p-2 rounded border border-slate-800">
+                        <div className="text-[9px] text-slate-400">NODES EXPLORED</div>
+                        <div className="text-lg font-bold text-cyan-300 mt-0.5">{algoMetrics.nodesExplored}</div>
+                      </div>
+                      <div className="bg-[#080d1a] p-2 rounded border border-slate-800">
+                        <div className="text-[9px] text-slate-400">FINAL PATH LENGTH</div>
+                        <div className="text-lg font-bold text-emerald-300 mt-0.5">{algoMetrics.pathLength} <span className="text-[10px] text-slate-400">steps</span></div>
+                      </div>
+                      <div className="bg-[#080d1a] p-2 rounded border border-slate-800">
+                        <div className="text-[9px] text-slate-400">EXECUTION TIME</div>
+                        <div className="text-lg font-bold text-purple-300 mt-0.5">{algoMetrics.timeMs} <span className="text-[10px] text-slate-400">ms</span></div>
+                      </div>
+                    </div>
+
+                    <p className="mt-2 text-[11px] text-slate-400 font-mono bg-slate-900/50 p-2 rounded border border-slate-800/80">
+                      <span className="text-purple-300 font-bold">{ALGORITHMS[algorithm].name}: </span>
+                      {ALGORITHMS[algorithm].shortDesc}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* VIEW 2: ALGORITHM COMPARISON LAB */}
+            {activeTab === 'ALGO_LAB' && (
+              <div className="max-w-6xl mx-auto space-y-6">
+                
+                {/* Header Card */}
+                <div className="hud-card p-6 rounded-xl flex flex-wrap items-center justify-between gap-4">
+                  <div>
+                    <h2 className="text-xl font-bold font-mono text-cyan-400 tracking-wider flex items-center gap-2">
+                      <svg className="w-6 h-6 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
+                      </svg>
+                      AI SEARCH ALGORITHMS COMPARISON LAB
+                    </h2>
+                    <p className="text-xs text-slate-400 font-mono mt-1">
+                      Direct empirical benchmark comparing BFS, DFS, A*, and Dijkstra running on identical room obstacles and targets.
+                    </p>
+                  </div>
+
+                  <button
+                    onClick={runBenchmark}
+                    className="px-5 py-2.5 rounded-lg bg-gradient-to-r from-cyan-600 to-purple-600 hover:from-cyan-500 hover:to-purple-500 text-white font-mono font-bold text-xs tracking-wider flex items-center gap-2 shadow-lg transition-transform active:scale-95"
+                  >
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                    </svg>
+                    RUN 4-WAY BENCHMARK TEST
+                  </button>
+                </div>
+
+                {/* Benchmark Comparison Cards (4 Cards) */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 font-mono">
+                  {Object.keys(ALGORITHMS).map(key => {
+                    const info = ALGORITHMS[key];
+                    const bench = benchmarkResults ? benchmarkResults[key] : null;
+                    const isAStar = key === 'ASTAR';
+
+                    return (
+                      <div
+                        key={key}
+                        className={`hud-card p-5 rounded-xl border flex flex-col justify-between ${
+                          isAStar ? 'border-cyan-400/50 shadow-[0_0_15px_rgba(0,242,254,0.15)]' : 'border-slate-800'
+                        }`}
+                      >
+                        <div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-300 font-bold">
+                              {info.type}
+                            </span>
+                            {isAStar && (
+                              <span className="text-[10px] px-2 py-0.5 rounded bg-cyan-950 text-cyan-300 border border-cyan-500/50 font-bold">
+                                DEFAULT
+                              </span>
+                            )}
+                          </div>
+
+                          <h3 className="text-base font-bold text-slate-100 mt-2">{info.name}</h3>
+                          <div className="text-xs text-cyan-400 mt-0.5 font-semibold">{info.badge}</div>
+                          
+                          <p className="text-[11px] text-slate-400 mt-3 leading-relaxed">
+                            {info.shortDesc}
+                          </p>
+
+                          <div className="mt-4 pt-3 border-t border-slate-800 text-xs space-y-1.5 text-slate-300">
+                            <div className="flex justify-between">
+                              <span className="text-slate-500">Complexity:</span>
+                              <span className="text-purple-300">{info.complexity}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-slate-500">Optimality:</span>
+                              <span className={info.optimality.includes('Guaranteed') ? 'text-emerald-400' : 'text-amber-400'}>
+                                {info.optimality}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Benchmark Live Results */}
+                        <div className="mt-5 pt-3 border-t border-slate-800 bg-[#080d1a] p-3 rounded-lg">
+                          <div className="text-[10px] text-slate-400 uppercase font-bold tracking-wider mb-2">
+                            Empirical Test Results:
+                          </div>
+                          {bench ? (
+                            <div className="space-y-1 text-xs">
+                              <div className="flex justify-between">
+                                <span className="text-slate-400">Nodes Explored:</span>
+                                <span className="text-cyan-400 font-bold">{bench.nodesExplored}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-slate-400">Path Length:</span>
+                                <span className="text-emerald-400 font-bold">{bench.pathLength}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-slate-400">Time:</span>
+                                <span className="text-purple-400 font-bold">{bench.timeMs} ms</span>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="text-[11px] text-slate-500 italic">
+                              Click "Run 4-Way Benchmark Test" above to execute on the room layout.
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Analytical Synthesis / AIML Presentation Table */}
+                <div className="hud-card p-6 rounded-xl font-mono">
+                  <h3 className="text-sm font-bold text-cyan-400 tracking-wider mb-4 flex items-center gap-2">
+                    <svg className="w-4 h-4 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    ALGORITHM THEORETICAL COMPARISON (VIVA REFERENCE)
+                  </h3>
+
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs border border-slate-800">
+                      <thead className="bg-slate-900/80 text-slate-300 border-b border-slate-800">
+                        <tr>
+                          <th className="p-3">Algorithm</th>
+                          <th className="p-3">Search Mechanism</th>
+                          <th className="p-3">Heuristic Function</th>
+                          <th className="p-3">Time Complexity</th>
+                          <th className="p-3">Space Complexity</th>
+                          <th className="p-3">Shortest Path?</th>
+                          <th className="p-3">Autonomous Vacuum Suitability</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-800/80 text-slate-300">
+                        <tr className="hover:bg-cyan-950/20">
+                          <td className="p-3 font-bold text-cyan-400">A* (A-Star)</td>
+                          <td className="p-3">Informed Best-First</td>
+                          <td className="p-3 text-purple-300">Manhattan: |x1-x2| + |y1-y2|</td>
+                          <td className="p-3">O(b^d)</td>
+                          <td className="p-3">O(b^d)</td>
+                          <td className="p-3 text-emerald-400 font-bold">YES</td>
+                          <td className="p-3 text-emerald-300">Optimal. Minimizes battery consumption and unnecessary traversal.</td>
+                        </tr>
+                        <tr className="hover:bg-slate-900/50">
+                          <td className="p-3 font-bold text-slate-200">Dijkstra's</td>
+                          <td className="p-3">Uniform Cost Search</td>
+                          <td className="p-3 text-slate-500">None (h=0)</td>
+                          <td className="p-3">O(V + E log V)</td>
+                          <td className="p-3">O(V)</td>
+                          <td className="p-3 text-emerald-400 font-bold">YES</td>
+                          <td className="p-3 text-slate-400">Guarantees minimum cost, but explores redundant radial nodes.</td>
+                        </tr>
+                        <tr className="hover:bg-slate-900/50">
+                          <td className="p-3 font-bold text-slate-200">BFS</td>
+                          <td className="p-3">FIFO Queue Wavefront</td>
+                          <td className="p-3 text-slate-500">None</td>
+                          <td className="p-3">O(V + E)</td>
+                          <td className="p-3">O(V)</td>
+                          <td className="p-3 text-emerald-400 font-bold">YES</td>
+                          <td className="p-3 text-slate-400">Finds shortest path on unweighted grid, but expands evenly in all directions.</td>
+                        </tr>
+                        <tr className="hover:bg-slate-900/50">
+                          <td className="p-3 font-bold text-slate-200">DFS</td>
+                          <td className="p-3">LIFO Stack Deep Dive</td>
+                          <td className="p-3 text-slate-500">None</td>
+                          <td className="p-3">O(V + E)</td>
+                          <td className="p-3">O(V)</td>
+                          <td className="p-3 text-amber-400 font-bold">NO</td>
+                          <td className="p-3 text-amber-300">Very poor. Explores deeply along walls, resulting in winding paths.</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* VIEW 3: AI BRAIN & DECISION-MAKING PANEL */}
+            {activeTab === 'AI_BRAIN' && (
+              <div className="max-w-5xl mx-auto space-y-6">
+                
+                {/* Visual Pipeline Header */}
+                <div className="hud-card p-6 rounded-xl">
+                  <h2 className="text-xl font-bold font-mono text-cyan-400 tracking-wider flex items-center gap-2">
+                    <svg className="w-6 h-6 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                    </svg>
+                    AUTONOMOUS AGENT DECISION-MAKING PROCESS
+                  </h2>
+                  <p className="text-xs text-slate-400 font-mono mt-1">
+                    DustBot implements the classic closed-loop agent architecture: PERCEIVE → THINK → PLAN → ACT → VERIFY.
+                  </p>
+
+                  {/* Flowchart Diagram */}
+                  <div className="grid grid-cols-1 md:grid-cols-5 gap-3 mt-6 font-mono text-xs">
+                    {[
+                      { step: 1, name: '1. PERCEIVE', title: 'Dust & Sonar Sensing', body: 'Example: "Dust detected at position (5, 8). Ultrasonic clearance: Front 120cm, Left 45cm."' },
+                      { step: 2, name: '2. THINK', title: 'Target Identification', body: 'Example: "Target identified. Evaluating remaining battery and prioritizing nearest dust spot."' },
+                      { step: 3, name: '3. PLAN', title: 'Algorithm Selection', body: 'Example: "A* algorithm selected. Generates collision-free shortest path avoiding grey obstacles."' },
+                      { step: 4, name: '4. ACT', title: 'Robot Navigation', body: 'Example: "Robot moves toward the dust. Wheel motors engaged at 140 RPM. Suction spins up."' },
+                      { step: 5, name: '5. VERIFY', title: 'Cleaning Verification', body: 'Example: "Cleaning completed. Dust density reduced to zero. Grid cell updated to green."' }
+                    ].map(card => (
+                      <div key={card.step} className="bg-[#080d1a] border border-cyan-500/30 p-4 rounded-lg flex flex-col justify-between">
+                        <div>
+                          <div className="text-cyan-400 font-bold">{card.name}</div>
+                          <div className="text-slate-200 font-semibold text-[11px] mt-1">{card.title}</div>
+                          <p className="text-[11px] text-slate-400 mt-2 leading-relaxed">{card.body}</p>
+                        </div>
+                        <div className="mt-3 text-[10px] text-cyan-500/70 font-mono">Stage {card.step} of 5</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Live Decision Log Stream */}
+                <div className="hud-card p-6 rounded-xl font-mono">
+                  <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+                    <h3 className="text-sm font-bold text-cyan-400 tracking-wider">
+                      LIVE ACTIVITY LOGS ({decisionLogs.length} Events)
+                    </h3>
+                    <button
+                      onClick={() => setDecisionLogs([])}
+                      className="text-xs text-slate-400 hover:text-slate-200 underline"
+                    >
+                      Clear Log
+                    </button>
+                  </div>
+
+                  <div className="mt-4 space-y-2 max-h-96 overflow-y-auto">
+                    {decisionLogs.map((log) => (
+                      <div key={log.id} className="p-2.5 rounded bg-[#080d1a] border border-slate-800/80 flex items-start gap-3 text-xs">
+                        <span className="text-slate-500 font-mono text-[10px] shrink-0 pt-0.5">{log.time}</span>
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold tracking-wider shrink-0 ${
+                          log.stage === 'PERCEIVE' ? 'bg-blue-950 text-blue-300 border border-blue-800' :
+                          log.stage === 'THINK' ? 'bg-purple-950 text-purple-300 border border-purple-800' :
+                          log.stage === 'PLAN' ? 'bg-cyan-950 text-cyan-300 border border-cyan-800' :
+                          log.stage === 'ACT' ? 'bg-amber-950 text-amber-300 border border-amber-800' :
+                          'bg-emerald-950 text-emerald-300 border border-emerald-800'
+                        }`}>
+                          {log.stage}
+                        </span>
+                        <span className={`flex-1 ${
+                          log.type === 'success' ? 'text-emerald-400 font-semibold' :
+                          log.type === 'warn' ? 'text-amber-400 font-semibold' : 'text-slate-300'
+                        }`}>
+                          {log.msg}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* VIEW 4: HARDWARE MONITORING PANEL */}
+            {activeTab === 'TELEMETRY' && (
+              <div className="max-w-6xl mx-auto space-y-6">
+                
+                {/* Header Card */}
+                <div className="hud-card p-6 rounded-xl flex flex-wrap items-center justify-between gap-4">
+                  <div>
+                    <h2 className="text-xl font-bold font-mono text-cyan-400 tracking-wider flex items-center gap-2">
+                      <svg className="w-6 h-6 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />
+                      </svg>
+                      HARDWARE MONITORING PANEL (SIMULATED TESTBENCH)
+                    </h2>
+                    <p className="text-xs text-slate-400 font-mono mt-1">
+                      Simulated physical sensor readings, motor states, and power telemetry for academic demonstration.
+                    </p>
+                  </div>
+
+                  <div className="px-3 py-1.5 rounded bg-amber-950 text-amber-300 border border-amber-500/40 font-mono text-xs font-bold">
+                    [ALL HARDWARE VALUES ARE SIMULATED]
+                  </div>
+                </div>
+
+                {/* Subsystem Telemetry Cards (Grid of 6) */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 font-mono">
+                  
+                  {/* Card 1: ESP32 Controller */}
+                  <div className="hud-card p-5 rounded-xl border border-slate-800">
+                    <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+                      <h3 className="text-sm font-bold text-cyan-300">ESP32 CONTROLLER</h3>
+                      <span className="text-[10px] text-emerald-400 font-bold">CONNECTED (SIMULATION)</span>
+                    </div>
+                    <div className="mt-4 space-y-2 text-xs text-slate-300">
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Model:</span>
+                        <span>ESP32-WROOM-32</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Clock:</span>
+                        <span className="text-cyan-400">240 MHz Dual-Core</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Internal SRAM:</span>
+                        <span>520 KB</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Sensor Bus:</span>
+                        <span>I2C Fast Mode (400kHz)</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Card 2: Ultrasonic Sensor */}
+                  <div className="hud-card p-5 rounded-xl border border-slate-800">
+                    <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+                      <h3 className="text-sm font-bold text-cyan-300">ULTRASONIC SENSOR</h3>
+                      <span className="text-[10px] text-emerald-400 font-bold">ACTIVE</span>
+                    </div>
+                    <div className="mt-4 space-y-2 text-xs text-slate-300">
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Front Clearance:</span>
+                        <span className="text-cyan-400 font-bold">{ultrasonicDistances.front} cm</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Right Clearance:</span>
+                        <span className="text-cyan-400 font-bold">{ultrasonicDistances.right} cm</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Left Clearance:</span>
+                        <span className="text-cyan-400 font-bold">{ultrasonicDistances.left} cm</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Rear Clearance:</span>
+                        <span className="text-cyan-400 font-bold">{ultrasonicDistances.back} cm</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Card 3: Dust Detection Sensor */}
+                  <div className="hud-card p-5 rounded-xl border border-slate-800">
+                    <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+                      <h3 className="text-sm font-bold text-cyan-300">DUST DETECTION SENSOR</h3>
+                      <span className="text-[10px] text-emerald-400 font-bold">ACTIVE</span>
+                    </div>
+                    <div className="mt-4 space-y-2 text-xs text-slate-300">
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Sensor Model:</span>
+                        <span>Sharp GP2Y1010AU0F</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Analog Voltage:</span>
+                        <span className="text-amber-400 font-bold">{dustSensorVoltage.toFixed(2)} V</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Dust Density:</span>
+                        <span className="text-amber-300 font-bold">{dustDensity} µg/m³</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Status:</span>
+                        <span className={dustDensity > 50 ? 'text-amber-400 font-bold' : 'text-emerald-400'}>
+                          {dustDensity > 50 ? 'DUST DETECTED' : 'CLEAR'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Card 4: Wheel Motors */}
+                  <div className="hud-card p-5 rounded-xl border border-slate-800">
+                    <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+                      <h3 className="text-sm font-bold text-cyan-300">WHEEL MOTORS</h3>
+                      <span className={wheelMotorRPM.left > 0 ? 'text-[10px] text-cyan-400 font-bold' : 'text-[10px] text-slate-500 font-bold'}>
+                        {wheelMotorRPM.left > 0 ? 'RUNNING' : 'STOPPED'}
+                      </span>
+                    </div>
+                    <div className="mt-4 space-y-2 text-xs text-slate-300">
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Motor Driver:</span>
+                        <span>L298N Dual H-Bridge</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Left Wheel:</span>
+                        <span className="text-slate-200">{wheelMotorRPM.left} RPM</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Right Wheel:</span>
+                        <span className="text-slate-200">{wheelMotorRPM.right} RPM</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Movement Steps:</span>
+                        <span>{movementsCount} ticks</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Card 5: Vacuum Motor */}
+                  <div className="hud-card p-5 rounded-xl border border-slate-800">
+                    <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+                      <h3 className="text-sm font-bold text-cyan-300">VACUUM MOTOR</h3>
+                      <span className={`text-[10px] font-bold ${vacuumMotorOn ? 'text-emerald-400 animate-pulse' : 'text-slate-500'}`}>
+                        {vacuumMotorOn ? 'ON' : 'OFF'}
+                      </span>
+                    </div>
+                    <div className="mt-4 space-y-2 text-xs text-slate-300">
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Suction Turbine:</span>
+                        <span>12V BLDC High-Torque</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Turbine Speed:</span>
+                        <span className="text-emerald-400 font-bold">{vacuumMotorOn ? '18,500 RPM' : '0 RPM'}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Current Draw:</span>
+                        <span className="text-slate-200">{vacuumMotorOn ? '2.4 A' : '0.1 A'}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Suction Power:</span>
+                        <span>{vacuumMotorOn ? '2500 Pa' : '0 Pa'}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Card 6: Battery Subsystem */}
+                  <div className="hud-card p-5 rounded-xl border border-slate-800">
+                    <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+                      <h3 className="text-sm font-bold text-cyan-300">BATTERY SYSTEM</h3>
+                      <span className="text-[10px] text-emerald-400 font-bold">85% NOMINAL</span>
+                    </div>
+                    <div className="mt-4 space-y-2 text-xs text-slate-300">
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Battery Level:</span>
+                        <span className="text-emerald-400 font-bold">{battery.toFixed(1)}%</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Pack Voltage:</span>
+                        <span>12.18 V (3S LiPo)</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Capacity:</span>
+                        <span>2200 mAh (24.4 Wh)</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Estimated Runtime:</span>
+                        <span>~52 mins</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* VIEW 5: PRESENTATION MODE (8 SECTIONS) */}
+            {activeTab === 'PRESENTATION' && (
+              <div className="max-w-5xl mx-auto space-y-6">
+                
+                {/* Slide Viewport Card */}
+                <div className="hud-card p-8 rounded-2xl border border-cyan-500/30 min-h-[520px] flex flex-col justify-between relative shadow-2xl">
+                  
+                  {/* Slide Header */}
+                  <div>
+                    <div className="flex items-center justify-between pb-4 border-b border-slate-800">
+                      <div className="flex items-center gap-2">
+                        <span className="px-2.5 py-1 rounded bg-cyan-950 text-cyan-300 border border-cyan-500/40 text-xs font-mono font-bold">
+                          {PRESENTATION_SLIDES[currentSlideIndex].tag}
+                        </span>
+                        <span className="text-xs font-mono text-slate-400">
+                          SECTION {currentSlideIndex + 1} OF {PRESENTATION_SLIDES.length}
+                        </span>
+                      </div>
+
+                      <div className="text-xs font-mono text-slate-400">
+                        DustBot &bull; College AIML Project Presentation
+                      </div>
+                    </div>
+
+                    {/* Slide Titles */}
+                    <div className="mt-6">
+                      <h2 className="text-2xl sm:text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-teal-300 to-white font-mono">
+                        {PRESENTATION_SLIDES[currentSlideIndex].title}
+                      </h2>
+                      <p className="text-base text-cyan-400 font-mono mt-1 font-semibold">
+                        {PRESENTATION_SLIDES[currentSlideIndex].subtitle}
+                      </p>
+                    </div>
+
+                    {/* Slide Bullet Points */}
+                    <div className="mt-8 space-y-4">
+                      {PRESENTATION_SLIDES[currentSlideIndex].points.map((pt, idx) => (
+                        <div key={idx} className="flex items-start gap-3 p-3.5 rounded-lg bg-[#080d1a] border border-slate-800/80">
+                          <div className="w-6 h-6 rounded-full bg-cyan-950 border border-cyan-500/50 flex items-center justify-center text-xs font-mono text-cyan-400 font-bold shrink-0 mt-0.5">
+                            {idx + 1}
+                          </div>
+                          <p className="text-sm text-slate-200 leading-relaxed font-sans">
+                            {pt}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Slide Navigation Bar */}
+                  <div className="mt-8 pt-4 border-t border-slate-800 flex items-center justify-between">
+                    <button
+                      onClick={() => {
+                        sound.playClick();
+                        setCurrentSlideIndex(i => Math.max(0, i - 1));
+                      }}
+                      disabled={currentSlideIndex === 0}
+                      className={`px-4 py-2 rounded-lg font-mono text-xs font-bold flex items-center gap-2 border transition-all ${
+                        currentSlideIndex === 0
+                          ? 'opacity-40 cursor-not-allowed border-slate-800 text-slate-600'
+                          : 'border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-200'
+                      }`}
+                    >
+                      ◀ PREVIOUS SECTION
+                    </button>
+
+                    {/* Slide Dot Indicators */}
+                    <div className="flex items-center gap-1.5">
+                      {PRESENTATION_SLIDES.map((_, i) => (
+                        <button
+                          key={i}
+                          onClick={() => { sound.playClick(); setCurrentSlideIndex(i); }}
+                          className={`w-3 h-3 rounded-full transition-all ${
+                            currentSlideIndex === i
+                              ? 'bg-cyan-400 w-6 shadow-[0_0_8px_#00f2fe]'
+                              : 'bg-slate-700 hover:bg-slate-500'
+                          }`}
+                          title={`Section ${i + 1}`}
+                        />
+                      ))}
+                    </div>
+
+                    <button
+                      onClick={() => {
+                        sound.playClick();
+                        setCurrentSlideIndex(i => Math.min(PRESENTATION_SLIDES.length - 1, i + 1));
+                      }}
+                      disabled={currentSlideIndex === PRESENTATION_SLIDES.length - 1}
+                      className={`px-4 py-2 rounded-lg font-mono text-xs font-bold flex items-center gap-2 border transition-all ${
+                        currentSlideIndex === PRESENTATION_SLIDES.length - 1
+                          ? 'opacity-40 cursor-not-allowed border-slate-800 text-slate-600'
+                          : 'border-cyan-500/50 bg-cyan-600 hover:bg-cyan-500 text-slate-950 font-black'
+                      }`}
+                    >
+                      NEXT SECTION ▶
+                    </button>
+                  </div>
+                </div>
+
+                {/* Speaker Notes / Presentation Guide */}
+                <div className="hud-card p-5 rounded-xl font-mono text-xs text-slate-300">
+                  <h4 className="text-cyan-400 font-bold mb-2">🎓 College Project Presentation Checklist:</h4>
+                  <ul className="list-disc pl-5 space-y-1 text-slate-400">
+                    <li>Walk through the 8 sections sequentially for the evaluators and viva examiners.</li>
+                    <li>Emphasize that A* is an informed search utilizing the Manhattan heuristic, whereas BFS and Dijkstra are uninformed.</li>
+                    <li>Explain why DFS explores deeply first and leads to poor path lengths in mobile robotics.</li>
+                    <li>Demonstrate the live simulation dashboard and show how the robot changes cells to green upon cleaning.</li>
+                  </ul>
+                </div>
+              </div>
+            )}
+          </main>
+
+          {/* ============================================================== */}
+          {/* VICTORY / MISSION COMPLETE MODAL */}
+          {/* ============================================================== */}
+          {showVictoryModal && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-fade-in">
+              <div className="hud-card p-6 sm:p-8 rounded-2xl max-w-md w-full border border-emerald-500/40 shadow-[0_0_30px_rgba(16,185,129,0.25)] text-center font-mono">
+                
+                {/* Trophy Badge */}
+                <div className="w-16 h-16 rounded-full bg-emerald-950/80 border-2 border-emerald-400 mx-auto flex items-center justify-center text-3xl shadow-[0_0_15px_#10b981] animate-bounce">
+                  🏆
+                </div>
+
+                <h3 className="text-xl font-bold text-white mt-4 tracking-wider">
+                  MISSION ACCOMPLISHED!
+                </h3>
+                <p className="text-xs text-emerald-400 mt-1 font-semibold">
+                  100% of Room Dust Targets Autonomously Cleaned
+                </p>
+
+                {/* Performance Summary Grid */}
+                <div className="grid grid-cols-2 gap-3 my-5 text-left text-xs bg-[#080d1a] p-4 rounded-lg border border-slate-800">
+                  <div>
+                    <span className="text-slate-400">Dust Collected:</span>
+                    <div className="text-emerald-400 font-bold text-sm">{dustCollectedCount} / {totalDustCount}</div>
+                  </div>
+                  <div>
+                    <span className="text-slate-400">Algorithm Used:</span>
+                    <div className="text-cyan-400 font-bold text-sm">{ALGORITHMS[algorithm].name.split(' ')[0]}</div>
+                  </div>
+                  <div>
+                    <span className="text-slate-400">Total Movements:</span>
+                    <div className="text-slate-200 font-bold text-sm">{movementsCount} steps</div>
+                  </div>
+                  <div>
+                    <span className="text-slate-400">Path Efficiency:</span>
+                    <div className="text-purple-400 font-bold text-sm">{pathEfficiency}%</div>
+                  </div>
+                </div>
+
+                {/* Actions */}
+                <div className="flex gap-3 justify-center">
+                  <button
+                    onClick={() => setShowVictoryModal(false)}
+                    className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold transition-colors"
+                  >
+                    CLOSE WINDOW
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowVictoryModal(false);
+                      handleRandomizeDust();
+                      toggleCleaning();
+                    }}
+                    className="px-5 py-2 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-slate-950 text-xs font-black transition-colors shadow-lg"
+                  >
+                    CLEAN AGAIN ▶
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ============================================================== */}
+          {/* BOTTOM PERSISTENT FOOTER */}
+          {/* ============================================================== */}
+          <footer className="hud-card px-5 py-2.5 border-t border-slate-800 text-[11px] font-mono text-slate-500 flex flex-wrap items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <span className="flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+                <span>SYSTEM ONLINE</span>
+              </span>
+              <span>&bull;</span>
+              <span>DUSTBOT – INTELLIGENT AUTONOMOUS CLEANING AGENT</span>
+              <span>&bull;</span>
+              <span>COLLEGE AIML PROJECT PRESENTATION</span>
+            </div>
+            <div>
+              <span>Hardware values are simulated for the academic prototype demonstration</span>
+            </div>
+          </footer>
+        </div>
+      );
+    }
+
+    // Mount React App
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
